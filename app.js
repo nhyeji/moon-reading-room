@@ -2284,10 +2284,9 @@
     if (!box || !book) return;
     const q = book.title || '';
     const okList = SEOUL_ON_LIBS.filter((l) => l.on === 'ok');
-    const short = (l) => l.name.replace('구립도서관', '').replace('통합도서관', '').replace('구립', '');
-    const chips = okList.map((l) => `<a class="lib-chip" href="${esc(libTarget(l, q))}" target="_blank" rel="noopener">${esc(l.gu)} ${esc(short(l))}</a>`).join('');
+    const chips = okList.map((l) => `<a class="lib-chip" href="${esc(libTarget(l, q))}" target="_blank" rel="noopener" title="${esc(l.name)}">${esc(l.gu)}</a>`).join('');
     const rest = SEOUL_ON_LIBS.filter((l) => l.on !== 'ok').map((l) => `<a class="lib-chip dim" href="${esc(libTarget(l, q))}" target="_blank" rel="noopener">${esc(l.gu)}</a>`).join('');
-    box.innerHTML = `<p class="hold-note">서울온 앱 시설카드로 가입한 구립도서관에서 “${esc(q)}”을(를) 찾아봅니다.</p>
+    box.innerHTML = `<p class="hold-note">서울온 앱 시설카드로 가입한 구립도서관에서 “${esc(q)}” 소장 여부를 찾아봅니다.</p>
       <div class="lib-chips">${chips}</div>
       <p class="hold-note">가입 안내를 확인하지 못한 곳 — 해당 구 홈페이지에서 직접 검색</p>
       <div class="lib-chips">${rest}<a class="lib-chip dim" href="${esc(SEOUL_LIBRARY.site)}" target="_blank" rel="noopener">서울도서관</a></div>`;
