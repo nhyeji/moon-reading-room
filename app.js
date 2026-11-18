@@ -253,7 +253,10 @@
     [/마법의 시간여행|Magic Tree House/i, ['판타지', '모험', '역사', '시리즈', '챕터북'], '마법의 시간여행'],
     [/지대넓얕/, ['인문', '교양', '경제', '시리즈'], '지대넓얕'],
     [/K탐정/, ['사회', '법', '경제', '교양', '시리즈'], 'K탐정'],
-    [/별똥별 아줌마/, ['과학', '우주', '천문', '시리즈'], '별똥별 아줌마'],
+    [/별똥별 아줌마/, ['과학', '시리즈'], '별똥별 아줌마'],
+    [/우주\s*이야기/, ['우주', '천문'], ''],
+    [/지구\s*이야기/, ['지구', '자연'], ''],
+    [/몸\s*이야기/, ['인체'], ''],
     [/제돌이|해오리|바다로 돌아간/, ['바다', '동물', '자연', '환경'], ''],
     [/전천당|이상한 과자/, ['판타지', '동화', '시리즈'], '이상한 과자 가게 전천당'],
     [/만복이네 떡집|소원 떡집/, ['판타지', '동화', '시리즈', '한국창작동화'], '만복이네 떡집'],
@@ -316,6 +319,24 @@
       .filter((x) => x.length >= 2);
   }
 
+  // 같은 책인지 알아보는 제목 키(판본·괄호·부제 차이를 없앤다). 권차 숫자는 남긴다.
+  function titleKeys(t) {
+    const noSub = String(t || '').replace(/[:：].*$/, ' ');
+    const k = (s) => s.replace(/[^가-힣A-Za-z0-9]/g, '').toLowerCase();
+    return [k(noSub.replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')), k(noSub)];
+  }
+  // 판본만 다른 같은 책인지(한쪽에 시리즈 접두어가 빠져 있는 경우 포함)
+  function sameTitle(a, b) {
+    const ak = titleKeys(a).filter(Boolean), bk = titleKeys(b).filter(Boolean);
+    return ak.some((x) => bk.includes(x));
+  }
+  // 카드·이유에 쓰는 짧은 제목
+  function shortTitle(t) {
+    const s = String(t || '').replace(/\s+/g, ' ').trim();
+    const cut = s.split(/[,:：]/)[0].trim();
+    return cut.length > 24 ? cut.slice(0, 23) + '…' : cut;
+  }
+
   function prof(b) {
     if (!b) return { tags: [], series: '', lang: 'ko', type: 'chapter', kdc: '', author: '', field: '' };
     if (b.__prof) return b.__prof;
@@ -350,22 +371,25 @@
     let score = 0;
     const why = [];
     if (a.kdc && b.kdc) {
-      if (a.kdc === b.kdc) score += 34;
-      else if (a.kdc.slice(0, 2) === b.kdc.slice(0, 2)) score += 22;
-      else if (a.kdc[0] === b.kdc[0]) score += 12;
+      if (a.kdc === b.kdc) score += 30;
+      else if (a.kdc.slice(0, 2) === b.kdc.slice(0, 2)) score += 18;
+      else if (a.kdc[0] === b.kdc[0]) score += 8;
     }
     const shared = a.tags.filter((t) => b.tags.includes(t));
-    score += Math.min(shared.length, 4) * 9;
     const topic = shared.filter((t) => !GENERIC_TAGS.includes(t));
+    const generic = shared.filter((t) => GENERIC_TAGS.includes(t));
+    score += Math.min(topic.length, 3) * 11 + Math.min(generic.length, 3) * 3;
     const sameSeries = !!(a.series && b.series && a.series === b.series);
     if (sameSeries) score += 30;
     const ak = authorKeys(a.author), bk = authorKeys(b.author);
     const sameAuthor = !!(ak.length && bk.length && ak.some((x) => bk.includes(x) ||
       (x.length >= 3 && bk.some((y) => y.includes(x) || x.includes(y)))));
-    if (sameAuthor) score += 22;
-    if (a.lang === b.lang) score += 7;
-    if (a.type === b.type) score += 7;
-    if (a.field && b.field && a.field === b.field) score += 8;
+    if (sameAuthor) score += 24;
+    if (a.lang === b.lang) score += 4;
+    if (a.type === b.type) score += 4;
+    if (a.field && b.field && a.field === b.field) score += 5;
+    // 같은 분야라는 이유만으로는 비슷한 책이라 부르지 않는다.
+    if (!topic.length && !sameSeries && !sameAuthor) score -= 12;
     if (topic.length) why.push(topic.slice(0, 2).join('·'));
     if (sameAuthor) why.unshift('같은 작가');
     else if (sameSeries) why.unshift('「' + a.series + '」 시리즈');
@@ -374,7 +398,7 @@
   }
 
   function matchReason(it) {
-    const t = (it.seed && it.seed.title) || '';
+    const t = shortTitle((it.seed && it.seed.title) || '');
     const why = (it.why || []).slice();
     const sameAuthor = why.indexOf('같은 작가') >= 0;
     const rest = why.filter((w) => w !== '같은 작가').slice(0, 2).join('·');
@@ -409,19 +433,26 @@
     const seeds = rated.filter((x) => x.level === topLevel).slice(0, 3);
     const doneKeys = new Set(Object.values(state.records)
       .filter((r) => r.status === 'done').map((r) => isbnKey(r.isbn)));
+    // 같은 책의 다른 판본(표지·출판사만 다른 경우)은 추천하지 않는다.
+    const doneTitles = [];
+    Object.values(state.records).filter((r) => r.status === 'done').forEach((r) => {
+      const b = bookForRecord(r);
+      [r.title, b && b.title].forEach((t) => { if (t) doneTitles.push(t); });
+    });
+    const isDoneTitle = (t) => doneTitles.some((d) => sameTitle(d, t));
     const ownKeys = new Set(ownedBooks().map((b) => isbnKey(b.isbn)));
     const loanKeys = new Set(loanItems().map((it) => isbnKey(it.isbn)).filter(Boolean));
 
     const picked = [];
     poolBooks().forEach((b) => {
       const k = isbnKey(b.isbn);
-      if (!k || doneKeys.has(k)) return;
+      if (!k || doneKeys.has(k) || isDoneTitle(b.title)) return;
       let best = null;
       seeds.forEach((s) => {
         const r = simScore(s.book, b);
         if (!best || r.score > best.score) best = { score: r.score, why: r.why, seed: s };
       });
-      if (!best || best.score < 26) return;
+      if (!best || best.score < 34) return;
       picked.push({
         book: b, score: best.score, why: best.why, seed: best.seed.book,
         seedLevel: best.seed.level, owned: ownKeys.has(k), loaned: loanKeys.has(k),
@@ -431,7 +462,7 @@
       String(x.book.title).localeCompare(String(y.book.title), 'ko'));
     res.items = picked.slice(0, 8);
     res.basis = {
-      title: seeds[0].book.title || seeds[0].rec.title || '',
+      title: shortTitle(seeds[0].book.title || seeds[0].rec.title || ''),
       level: seeds[0].level, n: seeds.length,
     };
 
@@ -439,13 +470,13 @@
     const catPicked = [];
     state.catalog.forEach((b) => {
       const k = isbnKey(b.isbn);
-      if (!k || doneKeys.has(k)) return;
+      if (!k || doneKeys.has(k) || isDoneTitle(b.title)) return;
       let best = null;
       seeds.forEach((s) => {
         const r = simScore(s.book, b);
         if (!best || r.score > best.score) best = { score: r.score, why: r.why, seed: s };
       });
-      if (best && best.score >= 26) {
+      if (best && best.score >= 34) {
         catPicked.push({ k, best });
       }
     });
