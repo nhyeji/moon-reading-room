@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fdeef5">
+<title>MOON's Reading Room</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="avatar" aria-hidden="true">🐰</span>
+      <h1>MOON's Reading Room</h1>
+    </div>
+    <button id="refreshBtn" class="icon-btn" title="실시간 상태 새로고침" aria-label="새로고침">⟳</button>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" data-view="shelf" role="tab" aria-selected="true">📚 MOON의 책장</button>
+    <button class="tab" data-view="rec" role="tab" aria-selected="false">✨ 추천 서가</button>
+  </nav>
+
+  <main>
+    <!-- ================= MOON의 책장 ================= -->
+    <section id="view-shelf" class="view is-active">
+      <div class="hello">
+        <div class="hello-inner">
+          <h2>안녕 MOON 🌷</h2>
+          <p class="hello-date"><span id="todayText">11월 18일 수요일</span> · 오늘도 책 한 권 어때?</p>
+          <div class="counters">
+            <div class="counter"><b id="cntToday">0</b><span>오늘</span></div>
+            <div class="counter"><b id="cntMonth">0</b><span>이번 달</span></div>
+            <div class="counter"><b id="cntYear">0</b><span>올해</span></div>
+          </div>
+        </div>
+        <span class="hello-rainbow" aria-hidden="true"></span>
+      </div>
+
+      <div class="section-head">
+        <h3>🌞 오늘 읽을 책</h3>
+        <button class="ghost" id="goPickBtn">책 고르러 가기 →</button>
+      </div>
+      <div id="todayList" class="today-list"></div>
+
+      <div class="section-head">
+        <h3>📖 읽은 책 서재</h3>
+        <button class="primary" id="addRecordBtn">＋ 직접 책 기록하기</button>
+      </div>
+      <div class="shelf-panel">
+        <div id="readList" class="read-list"></div>
+        <div class="shelf-board" aria-hidden="true"></div>
+      </div>
+
+      <p class="book-total">추천 <b id="totalRec">0</b>권 · 읽은 책 <b id="totalDone">0</b>권</p>
+      <p class="live-note" id="liveNote">
+        도서관 대출상태는 실시간 조회 결과이며, 화면에 표시된 조회 시각 기준입니다.
+      </p>
+
+      <div class="accounts" id="accounts"></div>
+
+      <details class="library-dir" id="libraryDir">
+        <summary>🏛️ 도서관 안내 <span class="muted">(광진구립 8개관 · 스마트도서관 6곳 · 기타 서울)</span></summary>
+        <div class="dir-body">
+          <h5>광진구립도서관</h5>
+          <div class="dir-list" id="dirGwangjin"></div>
+          <h5>스마트도서관</h5>
+          <div class="dir-list" id="dirSmart"></div>
+          <h5>기타 서울시 구립도서관</h5>
+          <div class="dir-list" id="dirSeoul"></div>
+          <p class="muted small">광진구립은 통합검색으로 실시간 소장·대출 상태를 조회합니다. 다른 구립도서관은 홈페이지에서 직접 확인해 주세요.</p>
+        </div>
+      </details>
+
+      <div class="footer-links">
+        <button class="linkbtn" id="backupBtn">기록 백업</button>
+        <span>·</span>
+        <button class="linkbtn" id="restoreBtn">기록 복원</button>
+        <span>·</span>
+        <button class="linkbtn" id="resetBtn">기록 초기화</button>
+        <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+      </div>
+    </section>
+
+    <!-- ================= 추천 서가 ================= -->
+    <section id="view-rec" class="view">
+      <div class="search-row">
+        <label class="search-box">
+          <span aria-hidden="true">🔍</span>
+          <input id="searchInput" type="search" placeholder="제목·저자·출판사 검색" autocomplete="off">
+        </label>
+        <button class="primary" id="addBookBtn">＋ 도서 추가</button>
+      </div>
+
+      <div class="filters">
+        <select id="fSource" aria-label="출처 필터"><option value="">출처 전체</option></select>
+        <select id="fField" aria-label="분야 필터"><option value="">분야 전체</option></select>
+        <select id="fLibrary" aria-label="도서관 필터"><option value="">도서관 전체</option></select>
+      </div>
+
+      <div class="shelf-head">
+        <h3>✨ 추천 서가 <span id="recCount">0권</span></h3>
+        <div class="shelf-tools">
+          <button class="mini-btn" id="checkAllBtn" title="보이는 책들의 대출상태를 실시간 조회">실시간 조회</button>
+          <select id="sortBy" aria-label="정렬">
+            <option value="sources">추천 많은 순</option>
+            <option value="recent">최신순</option>
+            <option value="title">제목순</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="legend">
+        <i class="dot ok"></i>대출가능
+        <i class="dot no"></i>대출중·대출불가
+        <i class="dot none"></i>미소장 · 칩을 누르면 상세
+      </p>
+
+      <div id="grid" class="grid"></div>
+      <p class="grid-empty" id="gridEmpty" hidden>조건에 맞는 책이 없어요.</p>
+    </section>
+  </main>
+</div>
+
+<!-- ================= 도서 상세 시트 ================= -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="sheet-scroll">
+      <div class="sheet-head">
+        <div class="sheet-cover"><img id="mCover" alt=""></div>
+        <div class="sheet-meta">
+          <h2 id="mTitle">책 제목</h2>
+          <p class="sheet-sub" id="mSub"></p>
+          <p class="sheet-tags"><span class="chip chip-field" id="mField"></span><span id="mKdc" class="kdc"></span></p>
+        </div>
+        <button class="close" id="mClose">닫기</button>
+      </div>
+
+      <section class="sheet-section" id="mSourceSection">
+        <h4>추천 출처 · 추천 이유</h4>
+        <div class="source-badge" id="mSourceCount"></div>
+        <div id="mSources" class="source-list"></div>
+        <div id="mReason" class="reason"></div>
+      </section>
+
+      <section class="sheet-section">
+        <h4>단골 도서관 <span class="muted" id="mFavCount"></span></h4>
+        <div class="fav-tabs" id="mFavTabs"></div>
+        <div id="mFavRows" class="hold-rows"></div>
+        <div class="link-row" id="mLinks"></div>
+      </section>
+
+      <section class="sheet-section">
+        <h4>광진구립도서관 <span class="muted" id="mGwSummary"></span></h4>
+        <p class="muted small" id="mGwNote">광진구립도서관 통합검색 · 상호대차(책바다/알파스) 포함</p>
+        <div id="mGwRows" class="hold-rows"></div>
+        <div class="link-row" id="mGwLinks"></div>
+      </section>
+
+      <section class="sheet-section">
+        <h4>별점</h4>
+        <div class="stars" id="mStars"></div>
+        <h4>한줄 감상 (선택)</h4>
+        <textarea id="mReview" rows="3" placeholder="기억나는 장면, 새로 알게 된 사실"></textarea>
+      </section>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="primary" id="mWant">읽을래요</button>
+      <button class="pink" id="mDone">다 읽었어요!</button>
+      <button class="ghost" id="mClose2">닫기</button>
+      <button class="ghost" id="mEdit" hidden>✏️ 수정</button>
+      <button class="ghost danger" id="mDelete" hidden>삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 도서 추가 (바코드/직접 입력) ================= -->
+<div class="modal" id="addModal" hidden>
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="sheet sheet-sm" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="sheet-scroll">
+      <div class="add-head">
+        <h2 id="addTitle">책 기록하기</h2>
+        <button class="close" id="aClose">닫기</button>
+      </div>
+
+      <div class="seg2">
+        <button class="seg is-active" data-addmode="scan">📷 바코드</button>
+        <button class="seg" data-addmode="manual">⌨️ 직접 입력</button>
+      </div>
+
+      <div id="scanPane">
+        <div class="scan-box">
+          <video id="scanVideo" playsinline muted hidden></video>
+          <div class="scan-frame" aria-hidden="true"></div>
+          <p class="scan-msg" id="scanMsg">카메라를 책 뒷면 바코드에 맞춰 주세요.</p>
+        </div>
+        <div class="scan-actions">
+          <button class="primary" id="scanStart">카메라 켜기</button>
+          <button class="ghost" id="scanStop" hidden>카메라 끄기</button>
+          <label class="ghost filebtn">사진으로 찍기
+            <input type="file" id="scanFile" accept="image/*" capture="environment" hidden>
+          </label>
+        </div>
+        <p class="muted small" id="scanSupport"></p>
+      </div>
+
+      <div id="manualPane" hidden>
+        <label class="field">
+          <span>ISBN-13 / ISBN-10</span>
+          <input id="aIsbn" inputmode="numeric" placeholder="예: 9788936442804">
+        </label>
+        <div class="scan-actions">
+          <button class="primary" id="aLookup">서지 정보 불러오기</button>
+        </div>
+        <label class="field"><span>제목</span><input id="aTitle" placeholder="제목"></label>
+        <label class="field"><span>저자</span><input id="aAuthor" placeholder="저자 (선택)"></label>
+        <label class="field"><span>출판사</span><input id="aPublisher" placeholder="출판사 (선택)"></label>
+      </div>
+
+      <div class="lookup-result" id="aResult" hidden></div>
+
+      <section class="sheet-section" id="aRecordBox">
+        <h4>별점</h4>
+        <div class="stars" id="aStars"></div>
+        <h4>한줄 감상 (선택)</h4>
+        <textarea id="aReview" rows="2" placeholder="기억나는 장면, 새로 알게 된 사실"></textarea>
+        <label class="field"><span>읽은 날</span><input type="date" id="aDate"></label>
+      </section>
+    </div>
+    <div class="sheet-actions">
+      <button class="primary" id="aSave">기록 저장</button>
+      <button class="ghost" id="aCancel">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
