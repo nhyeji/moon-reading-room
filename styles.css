@@ -868,7 +868,7 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
 .loan-pills .pill.on { background: linear-gradient(135deg, #f6a3c0, #e77aa2); border-color: transparent; color: #fff; }
 .loan-pills .pill.on b { color: rgba(255, 255, 255, .85); }
 .loan-pills-acct .pill.on { background: linear-gradient(135deg, #b6a0e6, #8f76cf); }
-.loan-filters { grid-template-columns: 1fr; margin-top: 8px; }
+.loan-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); margin-top: 8px; }
 .loan-kind.hist { background: var(--green-soft); color: #1f7a51; }
 .loan-tag.date { background: #eef4fb; color: #4a6f9c; }
 .loan-stat.hist { background: var(--green-soft); border-color: #d8efe2; color: #1f7a51; }
