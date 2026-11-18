@@ -20,7 +20,13 @@
      "loanedAt": "2026-11-04",
      "dueAt": "2026-11-25",
      "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관"
+     "pickup": "구의역 스마트도서관",
+     "isbn": "9791197578427",
+     "author": "채사장 · 마케마케 글 · 정용환 그림",
+     "publisher": "돌핀북",
+     "year": "2022",
+     "kdc": "001",
+     "cover": "https://image.aladin.co.kr/product/28568/80/cover500/k852835146_1.jpg"
     },
     {
      "title": "K탐정의 척척척 대한민국. 2, 옹 아저씨, 대통령 선거에 나가다!",
@@ -28,7 +34,13 @@
      "loanedAt": "2026-10-30",
      "dueAt": "2026-11-20",
      "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관"
+     "pickup": "구의역 스마트도서관",
+     "isbn": "9788901258324",
+     "author": "양화당 글 · 허현경 그림",
+     "publisher": "웅진주니어",
+     "year": "2022",
+     "kdc": "308",
+     "cover": "https://image.aladin.co.kr/product/29096/58/cover500/8901258323_1.jpg"
     }
    ],
    "reservations": [
@@ -37,7 +49,13 @@
      "library": "광진정보도서관",
      "reservedAt": "2026-10-28",
      "queue": "1/1",
-     "until": "2026-11-26"
+     "until": "2026-11-26",
+     "isbn": "9791172134297",
+     "author": "성해나",
+     "publisher": "한겨레출판",
+     "year": "2026",
+     "kdc": "813",
+     "cover": "https://image.aladin.co.kr/product/39581/25/cover500/k692139247_2.jpg"
     }
    ],
    "interloans": [
@@ -76,7 +94,13 @@
      "loanedAt": "2026-11-04",
      "dueAt": "2026-11-25",
      "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관"
+     "pickup": "구의역 스마트도서관",
+     "isbn": "9788901268910",
+     "author": "양화당 글 · 허현경 그림",
+     "publisher": "웅진주니어",
+     "year": "2024",
+     "kdc": "369",
+     "cover": "https://image.aladin.co.kr/product/33302/29/cover500/8901268914_1.jpg"
     },
     {
      "title": "K탐정의 척척척 대한민국. 3, 김반듯의 월급이 사라졌다?",
@@ -84,7 +108,13 @@
      "loanedAt": "2026-11-04",
      "dueAt": "2026-11-25",
      "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관"
+     "pickup": "구의역 스마트도서관",
+     "isbn": "9788901268897",
+     "author": "양화당 글 · 허현경 그림",
+     "publisher": "웅진주니어",
+     "year": "2023",
+     "kdc": "375",
+     "cover": "https://image.aladin.co.kr/product/31198/43/cover500/8901268892_1.jpg"
     },
     {
      "title": "K탐정의 척척척 대한민국. 4, 왕눈이 분식, 떡볶이를 수출하다!",
@@ -92,7 +122,13 @@
      "loanedAt": "2026-11-04",
      "dueAt": "2026-11-25",
      "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관"
+     "pickup": "구의역 스마트도서관",
+     "isbn": "9788901268903",
+     "author": "양화당 글 · 허현경 그림",
+     "publisher": "웅진주니어",
+     "year": "2023",
+     "kdc": "369",
+     "cover": "https://image.aladin.co.kr/product/31953/82/cover500/8901268906_1.jpg"
     }
    ],
    "reservations": [],

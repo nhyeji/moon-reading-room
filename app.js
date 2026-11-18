@@ -33,6 +33,8 @@
     purchased: null,     // 예스24·알라딘 구매도서 (data/purchased_books.json)
     own: { q: '', store: '' },
     ownSort: 'recent',
+    accounts: null,      // 도서관 계정 대출·예약 (data/accounts_status.json)
+    loan: { status: '', acct: '', sort: 'due' },
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -293,6 +295,182 @@
     }
   }
 
+  /* ---------------- 대출도서 (도서관 계정 대출·예약) ---------------- */
+  function loanItems() {
+    const out = [];
+    ((state.accounts && state.accounts.libraries) || []).forEach((lib) => {
+      const base = {
+        libKey: lib.key || lib.label || '', libLabel: lib.label || '',
+        libName: lib.name || '', login: lib.login || '', member: lib.member || '',
+      };
+      (lib.loans || []).forEach((l, i) => out.push(Object.assign({}, base, l, { kind: 'loan', ref: (lib.key || 'lib') + ':L' + i })));
+      (lib.reservations || []).forEach((r, i) => out.push(Object.assign({}, base, r, { kind: 'reserve', ref: (lib.key || 'lib') + ':R' + i })));
+    });
+    return out;
+  }
+
+  function loanDueOf(it) { return it.kind === 'reserve' ? (it.until || '') : (it.dueAt || ''); }
+  function loanRecKey(it) { return it.isbn ? isbnKey(it.isbn) : 'loan-' + it.ref; }
+
+  function loanByKey(key) {
+    const k = String(key || '');
+    return loanItems().find((x) => loanRecKey(x) === k || ('loan-' + x.ref) === k || x.ref === k) || null;
+  }
+
+  function loanBook(it) {
+    if (!it) return null;
+    const kindTxt = it.kind === 'reserve'
+      ? `예약 ${it.reservedAt || ''}`.trim() + (it.queue ? ` · 순위 ${it.queue}` : '')
+      : `대출 ${it.loanedAt || ''}`.trim();
+    const tail = it.kind === 'reserve'
+      ? (it.until ? `수령기한 ~${it.until}` : '')
+      : [(it.dueAt ? `반납 ${it.dueAt}` : ''), (it.pickup ? `수령 ${it.pickup}` : '')].filter(Boolean).join(' · ');
+    const note = [it.library || '', kindTxt, tail, it.status || ''].filter(Boolean).join(' · ');
+    return {
+      isbn: it.isbn || ('loan-' + it.ref), key: loanRecKey(it),
+      title: it.title, author: it.author || '', publisher: it.publisher || '',
+      year: it.year || '', cover: it.cover || '', kdc: it.kdc || '',
+      field: it.kind === 'reserve' ? '예약도서' : '대출도서',
+      sources: [{ name: it.libName || '도서관', note }],
+      reason: '',
+    };
+  }
+
+  function daysLeft(ymdStr) {
+    const d = parseYmd(ymdStr);
+    if (!d) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((d - today) / 86400000);
+  }
+
+  function loanDueTag(it) {
+    const s = loanDueOf(it);
+    if (!s) return '';
+    const label = it.kind === 'reserve' ? '수령기한' : '반납';
+    const n = daysLeft(s);
+    if (n == null) return `<span class="loan-tag">${label} ${esc(s)}</span>`;
+    if (n < 0) return `<span class="loan-tag urgent">${label} ${esc(s)} · ${-n}일 지남</span>`;
+    if (n === 0) return `<span class="loan-tag urgent">${label} ${esc(s)} · 오늘까지</span>`;
+    if (n <= 3) return `<span class="loan-tag urgent">${label} ${esc(s)} · D-${n}</span>`;
+    return `<span class="loan-tag">${label} ${esc(s)} · D-${n}</span>`;
+  }
+
+  function loanFiltered() {
+    let list = loanItems();
+    if (state.loan.status) list = list.filter((x) => x.kind === state.loan.status);
+    if (state.loan.acct) list = list.filter((x) => x.libKey === state.loan.acct);
+    list = list.slice();
+    if (state.loan.sort === 'title') {
+      list.sort((a, b) => String(a.title).localeCompare(String(b.title), 'ko'));
+    } else if (state.loan.sort === 'loaned') {
+      list.sort((a, b) => String(b.loanedAt || b.reservedAt || '').localeCompare(String(a.loanedAt || a.reservedAt || '')));
+    } else {
+      list.sort((a, b) => String(loanDueOf(a) || '9999-99-99').localeCompare(String(loanDueOf(b) || '9999-99-99')));
+    }
+    return list;
+  }
+
+  function renderLoans() {
+    const box = $('#loanList');
+    if (!box) return;
+    const acc = state.accounts;
+    const all = loanItems();
+    const badge = $('#loanTabCount');
+    if (badge) badge.textContent = all.length ? String(all.length) : '0';
+    $('#loanCount').textContent = `${all.length}권`;
+
+    // 계정 필터 (책이 있는 계정만)
+    const sel = $('#loanAcct');
+    if (sel) {
+      const accts = [];
+      all.forEach((x) => {
+        if (!accts.some((a) => a.key === x.libKey)) {
+          accts.push({ key: x.libKey, name: x.login || x.libLabel || x.libName || '도서관' });
+        }
+      });
+      sel.innerHTML = '<option value="">계정 전체</option>' +
+        accts.map((a) => `<option value="${esc(a.key)}">${esc(a.name)}</option>`).join('');
+      sel.value = state.loan.acct || '';
+    }
+
+    if (acc) {
+      $('#loanSource').textContent = (acc.updatedAt ? `${acc.updatedAt} 확인 기준 · ` : '') +
+        '광진구립도서관 계정의 대출·예약 현황이에요. [새로고침]을 누르거나 Pickle에 요청하면 확인해 반영해 드려요.';
+    } else {
+      $('#loanSource').textContent = '대출·예약 현황을 아직 불러오지 못했어요. [새로고침]을 눌러 주세요.';
+    }
+
+    const loanN = all.filter((x) => x.kind === 'loan').length;
+    const resN = all.filter((x) => x.kind === 'reserve').length;
+    const soon = all.filter((x) => x.kind === 'loan')
+      .map((x) => daysLeft(x.dueAt)).filter((n) => n != null && n <= 3).length;
+    const notices = ((acc && acc.libraries) || [])
+      .filter((l) => l.notice && l.noticeLevel === 'warn')
+      .map((l) => `<span class="loan-stat warn">⚠️ ${esc((l.login || l.label) + ' · ' + l.notice)}</span>`).join('');
+    $('#loanSummary').innerHTML =
+      `<span class="loan-stat">📕 대출중 <b>${loanN}</b>권</span>` +
+      `<span class="loan-stat">🔖 예약 <b>${resN}</b>권</span>` +
+      (soon ? `<span class="loan-stat warn">⏰ 반납 임박 <b>${soon}</b>권</span>` : '') + notices;
+
+    const list = loanFiltered();
+    $('#loanEmpty').hidden = list.length > 0;
+    if (!list.length) {
+      $('#loanEmpty').textContent = !acc ? '대출·예약 현황을 불러오지 못했어요.'
+        : (all.length ? '조건에 맞는 대출·예약 도서가 없어요.' : '지금 대출·예약 중인 책이 없어요.');
+    }
+
+    box.innerHTML = list.map((it) => {
+      const rk = loanRecKey(it);
+      const rec = state.records[rk];
+      const isWanted = rec && rec.status === 'want';
+      const isDone = rec && rec.status === 'done';
+      const tags = [];
+      if (it.pickup) tags.push(`<span class="loan-tag">📦 수령 ${esc(it.pickup)}</span>`);
+      if (it.kind === 'loan' && it.status) tags.push(`<span class="loan-tag">${esc(it.status)}</span>`);
+      if (it.kind === 'reserve') {
+        if (it.queue) tags.push(`<span class="loan-tag">예약 ${esc(it.queue)}</span>`);
+        if (it.reservedAt) tags.push(`<span class="loan-tag">예약일 ${esc(it.reservedAt)}</span>`);
+      }
+      if (isDone) tags.push(`<span class="loan-tag done">✓ 읽음${rec.finishedAt ? ' ' + esc(rec.finishedAt) : ''}</span>`);
+      else if (isWanted) tags.push('<span class="loan-tag want">읽을래요</span>');
+      if (isDone && rec.stars) tags.push(`<span class="loan-tag stars">${stars(rec.stars)}</span>`);
+      return `<article class="loan-card" data-ref="${esc(it.ref)}">
+        <div class="loan-cover" data-act="detail" data-isbn="${esc(rk)}">${coverHTML(it.cover, it.title)}</div>
+        <div class="loan-body">
+          <div class="loan-top">
+            <span class="loan-kind ${it.kind === 'reserve' ? 'resv' : 'loan'}">${it.kind === 'reserve' ? '🔖 예약중' : '📕 대출중'}</span>
+            <span class="acct-badge">${esc(it.login || it.libLabel || '')}</span>
+            ${loanDueTag(it)}
+          </div>
+          <p class="loan-title" data-act="detail" data-isbn="${esc(rk)}">${esc(it.title)}</p>
+          <p class="loan-sub">${esc([it.author, it.publisher, it.year].filter(Boolean).join(' · '))}</p>
+          <div class="loan-meta"><span class="loan-tag">🏛️ ${esc(it.library || '')}</span>${tags.join('')}</div>
+          <div class="loan-actions">
+            <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(rk)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
+            <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(rk)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
+            <button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button>
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  async function loadLoanData(force) {
+    if (!force && window.__ACCOUNTS__) { state.accounts = window.__ACCOUNTS__; renderLoans(); return; }
+    const snap = './data/accounts_status.json' + (force ? '?t=' + Date.now() : '');
+    try {
+      state.accounts = await getJSON(state.serverless ? snap : '/api/accounts');
+    } catch (e) {
+      try { state.accounts = await getJSON(snap); }
+      catch (e2) {
+        if (!state.accounts && window.__ACCOUNTS__) state.accounts = window.__ACCOUNTS__;
+        if (!state.accounts) state.accounts = null;
+      }
+    }
+    renderLoans();
+  }
+
   async function init() {
     loadLocal();
     $('#todayText').textContent = fmtDate(new Date());
@@ -329,6 +507,7 @@
     buildOwnStore();
     renderAll();
     loadAccounts();
+    loadLoanData();
     mergeServerRecords();
   }
 
@@ -388,6 +567,7 @@
     renderRead();
     renderGrid();
     renderOwned();
+    renderLoans();
     $('#totalRec').textContent = state.catalog.length;
     $('#totalDone').textContent = Object.values(state.records).filter((r) => r.status === 'done').length;
   }
@@ -835,7 +1015,8 @@
 
   function handleAction(act, key) {
     const ownRaw = ownedByKey(key);
-    const book = bookByIsbn(key) || (ownRaw ? ownedBook(ownRaw) : null) || recordOf(key) || { isbn: key };
+    const book = bookByIsbn(key) || (ownRaw ? ownedBook(ownRaw) : null) || loanBook(loanByKey(key)) ||
+      recordOf(key) || { isbn: key };
     const rec = recordOf(key);
     if (act === 'detail') {
       openModal(book, {});
@@ -1206,12 +1387,13 @@
         x.classList.toggle('is-active', on);
         x.setAttribute('aria-selected', on ? 'true' : 'false');
       });
-      const viewIds = ['shelf', 'rec', 'owned'];
+      const viewIds = ['shelf', 'rec', 'loans', 'owned'];
       viewIds.forEach((v) => {
         const el = $('#view-' + v);
         if (el) el.classList.toggle('is-active', state.view === v);
       });
       if (state.view === 'rec') observeCards();
+      if (state.view === 'loans') renderLoans();
       if (state.view === 'owned') renderOwned();
     }));
 
@@ -1265,6 +1447,21 @@
       toast('구매도서 목록을 다시 불러왔어요');
     });
 
+    // 대출도서 탭
+    const loanStatus = $('#loanStatus');
+    if (loanStatus) loanStatus.addEventListener('change', (e) => { state.loan.status = e.target.value; renderLoans(); });
+    const loanAcct = $('#loanAcct');
+    if (loanAcct) loanAcct.addEventListener('change', (e) => { state.loan.acct = e.target.value; renderLoans(); });
+    const loanSort = $('#loanSort');
+    if (loanSort) loanSort.addEventListener('change', (e) => { state.loan.sort = e.target.value; renderLoans(); });
+    const loanRefresh = $('#loanRefreshBtn');
+    if (loanRefresh) loanRefresh.addEventListener('click', async () => {
+      loanRefresh.classList.add('is-loading');
+      await loadLoanData(true);
+      loanRefresh.classList.remove('is-loading');
+      toast('대출·예약 현황을 다시 불러왔어요');
+    });
+
     // 그리드 / 오늘 목록 / 서재 클릭 위임
     document.addEventListener('click', (e) => {
       const chip = e.target.closest('.chip-lib');
@@ -1281,6 +1478,8 @@
         if (book) { openModal(book); return; }
         const ownRaw = ownedByKey(k);
         if (ownRaw) { openModal(ownedBook(ownRaw)); return; }
+        const loanRaw = loanByKey(k);
+        if (loanRaw) { openModal(loanBook(loanRaw)); return; }
         return;
       }
       const actEl = e.target.closest('[data-act]');
