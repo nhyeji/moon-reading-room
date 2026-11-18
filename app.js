@@ -11,6 +11,30 @@
   const LS_HIDDEN = 'moon-reading-room:hidden:v1';
   const STATUS_TTL = 30 * 60 * 1000; // 30분
 
+  /* ---------------- 캐시 버스팅 ----------------
+   * index.html 이 styles.css·app.js 에 붙인 ?v= 값을 그대로 읽어, data/*.json 요청에도 같은 값을 붙인다.
+   * 휴대폰 브라우저와 GitHub Pages CDN 캐시(10분)가 옛 app.js·옛 데이터를 계속 보여 주지 않게 하려는 것.
+   * 배포할 때는 index.html 의 ?v= 값 하나만 새 시각으로 바꾸면 된다.
+   */
+  const ASSET_V = (() => {
+    try {
+      const src = (document.currentScript && document.currentScript.src) || '';
+      const m = /[?&]v=([^&#]+)/.exec(src);
+      if (m) return decodeURIComponent(m[1]);
+      if (window.__ASSET_V__) return String(window.__ASSET_V__);
+    } catch (e) { /* 무시 */ }
+    return '';
+  })();
+  // 정적 파일 주소에 빌드 판(?v=)을 붙인다. force 면 t= 까지 붙여 확실히 새로 받는다.
+  function assetURL(path, force) {
+    const q = [];
+    if (ASSET_V) q.push('v=' + encodeURIComponent(ASSET_V));
+    if (force) q.push('t=' + Date.now());
+    if (!q.length) return path;
+    return path + (path.indexOf('?') >= 0 ? '&' : '?') + q.join('&');
+  }
+  const NO_STORE = { cache: 'no-store' };
+
   /* ---------------- 서울시 구립도서관 (서울온) ----------------
    * 서울온(서울시 통합 앱, 옛 서울시민카드+서울지갑) 시설간편가입:
    * 서울 거주 확인만으로 도서관 방문 없이 모바일 대출회원증을 즉시 발급받는 서비스.
@@ -315,8 +339,8 @@
   }
 
   /* ---------------- api ---------------- */
-  async function getJSON(url) {
-    const r = await fetch(url);
+  async function getJSON(url, opts) {
+    const r = await fetch(url, opts || undefined);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }
@@ -388,7 +412,7 @@
   async function loadPool(force) {
     if (!force && window.__SIMILAR_POOL__) { state.pool = window.__SIMILAR_POOL__; return; }
     try {
-      state.pool = await getJSON('./data/similar_pool.json' + (force ? '?t=' + Date.now() : ''));
+      state.pool = await getJSON(assetURL('./data/similar_pool.json', force), NO_STORE);
     } catch (e) {
       if (!state.pool && window.__SIMILAR_POOL__) state.pool = window.__SIMILAR_POOL__;
     }
@@ -654,8 +678,8 @@
   async function loadPurchased(force) {
     if (!force && window.__PURCHASED__) { state.purchased = window.__PURCHASED__; return; }
     try {
-      const url = './data/purchased_books.json' + (force ? '?t=' + Date.now() : '');
-      state.purchased = await getJSON(url);
+      const url = assetURL('./data/purchased_books.json', force);
+      state.purchased = await getJSON(url, NO_STORE);
     } catch (e) {
       if (!state.purchased && window.__PURCHASED__) state.purchased = window.__PURCHASED__;
     }
@@ -1030,11 +1054,11 @@
 
   async function loadLoanData(force) {
     if (!force && window.__ACCOUNTS__) { state.accounts = window.__ACCOUNTS__; renderLoans(); return; }
-    const snap = './data/accounts_status.json' + (force ? '?t=' + Date.now() : '');
+    const snap = assetURL('./data/accounts_status.json', force);
     try {
-      state.accounts = await getJSON(state.serverless ? snap : '/api/accounts');
+      state.accounts = await getJSON(state.serverless ? snap : '/api/accounts', NO_STORE);
     } catch (e) {
-      try { state.accounts = await getJSON(snap); }
+      try { state.accounts = await getJSON(snap, NO_STORE); }
       catch (e2) {
         if (!state.accounts && window.__ACCOUNTS__) state.accounts = window.__ACCOUNTS__;
         if (!state.accounts) state.accounts = null;
@@ -1058,7 +1082,7 @@
     }
     if (!cat && window.__CATALOG__) cat = window.__CATALOG__;
     if (!cat) {
-      try { cat = await getJSON('./data/books.json'); } catch (e) { cat = null; }
+      try { cat = await getJSON(assetURL('./data/books.json'), NO_STORE); } catch (e) { cat = null; }
     }
     if (cat) applyCatalog(cat);
     else toast('책 목록을 불러오지 못했어요. 서버가 실행 중인지 확인해 주세요.');
@@ -1855,7 +1879,7 @@
     // 서버가 없어도(정적 호스팅) 확인해 둔 대출·예약 스냅숏을 읽어 표시한다.
     if (state.serverless) {
       try {
-        const acc = await getJSON('./data/accounts_status.json');
+        const acc = await getJSON(assetURL('./data/accounts_status.json'), NO_STORE);
         renderAccounts(acc);
       } catch (e) {
         box.innerHTML = `<div class="acc-card"><div class="acc-top">
