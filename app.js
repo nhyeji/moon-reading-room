@@ -314,8 +314,8 @@
 
     if (state.serverless) {
       $('#liveNote').textContent =
-        '지금은 서버 없이 열린 화면이라 실시간 대출 조회는 표시되지 않아요. ' +
-        '도서관 대출상태·계정 현황은 Pickle에 요청하시면 확인해 반영해 드려요. ' +
+        '지금은 서버 없이 열린 화면이라 실시간 대출 조회는 되지 않아요. ' +
+        '아래 도서관 계정 현황은 확인해 둔 시점의 스냅숏이고, 갱신이 필요하면 Pickle에 요청하시면 확인해 반영해 드려요. ' +
         '(PC에서 python3 server.py 로 열면 실시간 조회도 됩니다.)';
     } else {
       $('#liveNote').textContent =
@@ -944,7 +944,7 @@
         ${lib.notice ? `<p class="acc-body">${lib.noticeLevel === 'warn' ? '⚠️ ' : ''}${esc(lib.notice)}</p>` : ''}
         ${loans || res ? `<ul class="acc-loans">${loans}${res}</ul>` : ''}
         ${stats}
-        ${!loans && !res ? `<p class="acc-body">${esc(lib.notice || '대출·예약 내역을 확인하지 못했어요.')}</p>` : ''}
+        ${!loans && !res && lib.connected ? '<p class="acc-body">지금 대출·예약 중인 책이 없어요.</p>' : ''}
       </div>`;
     }).join('');
 
