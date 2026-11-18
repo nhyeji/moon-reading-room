@@ -92,6 +92,16 @@
     const f = feelOf(n);
     return f ? `<span class="feel ${f.cls}${extra ? ' ' + extra : ''}">${f.icon} ${f.label}</span>` : '';
   }
+  // 카드에 바로 놓는 3단계 평가 버튼 — 누르면 그 자리에서 '다 읽은 책'으로 저장된다.
+  function miniFeelRow(key, stars, extra = '') {
+    const v = clampRating(stars);
+    return `<div class="feel-row${extra ? ' ' + extra : ''}">` + FEEL_ORDER.map((n) =>
+      `<button type="button" class="mini-feel ${FEELS[n].cls}${v === n ? ' on' : ''}"
+        data-act="rate" data-isbn="${esc(key)}" data-val="${n}"
+        aria-label="${FEELS[n].label}" aria-pressed="${v === n ? 'true' : 'false'}">${FEELS[n].icon} ${FEELS[n].label}</button>`
+    ).join('') + '</div>';
+  }
+
   // 받침에 따라 '과/와'를 고른다.
   function joParticle(w) {
     const s = String(w || '');
@@ -593,6 +603,7 @@
             ${b.category ? `<span class="own-tag">${esc(b.category)}</span>` : ''}
             ${price ? `<span class="own-tag">${esc(price)}</span>` : ''}
           </div>
+          ${miniFeelRow(key, isDone ? rec.stars : 0)}
           <div class="own-actions">
             <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(key)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
             <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(key)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
@@ -760,10 +771,11 @@
     const dateChip = it.kind === 'history'
       ? `<span class="loan-tag date">🗓️ ${esc(dotDate(it.loanedAt))} → ${esc(dotDate(it.returnedAt))}</span>`
       : loanDueTag(it);
-    const feel = `<div class="loan-feel">${FEEL_ORDER.map((n) => `<button class="mini-feel ${FEELS[n].cls} ${stars === n ? 'on' : ''}" data-act="rate" data-isbn="${esc(rk)}" data-val="${n}">${FEELS[n].icon} ${FEELS[n].label}</button>`).join('')}</div>`;
+    const feel = `<div class="loan-feel">${FEEL_ORDER.map((n) => `<button type="button" class="mini-feel ${FEELS[n].cls}${stars === n ? ' on' : ''}" data-act="rate" data-isbn="${esc(rk)}" data-val="${n}" aria-label="${FEELS[n].label}" aria-pressed="${stars === n ? 'true' : 'false'}">${FEELS[n].icon} ${FEELS[n].label}</button>`).join('')}</div>`;
     const actions = it.kind === 'history'
       ? `<div class="loan-actions">${feel}<button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button></div>`
       : `<div class="loan-actions">
+            ${feel}
             <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(rk)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
             <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(rk)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
             <button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button>
@@ -871,7 +883,8 @@
     loadLocal();
     $('#todayText').textContent = fmtDate(new Date());
     wireEvents();
-    buildFeel($('#mStars'), (n) => { state.draftStars = n; setFeelHint('#mFeelHint', n); });
+    // 상세 시트의 평가 버튼은 누르는 즉시 '다 읽었어요'로 저장한다(두 번 누를 필요 없음).
+    buildFeel($('#mStars'), (n) => applySheetFeel(n));
     buildFeel($('#aStars'), (n) => { state.aStars = n; setFeelHint('#aFeelHint', n); });
 
     state.serverless = !(await probeServer());
@@ -1090,10 +1103,7 @@
           <p class="rc-sub">${esc(r.author || book.author || '')}${r.finishedAt ? ' · ' + esc(r.finishedAt) : ''}</p>
           ${r.review ? `<p class="rc-review">${esc(r.review)}</p>` : ''}
           <div class="rc-foot">
-            <div class="feel-pick" data-rate="${esc(r.isbn)}">
-              ${FEEL_ORDER.map((n) => `<button class="mini-feel ${FEELS[n].cls} ${clampRating(r.stars) === n ? 'on' : ''}"
-                data-act="rate" data-isbn="${esc(r.isbn)}" data-val="${n}">${FEELS[n].icon} ${FEELS[n].label}</button>`).join('')}
-            </div>
+            ${miniFeelRow(r.isbn, r.stars, 'feel-pick')}
             <span class="rc-btns">
               <button data-act="edit" data-isbn="${esc(r.isbn)}">수정</button>
               <button data-act="del" data-isbn="${esc(r.isbn)}">삭제</button>
@@ -1318,7 +1328,7 @@
     const rec = state.records[recKey(book)] || {};
     state.draftStars = clampRating(rec.stars);
     setFeel($('#mStars'), state.draftStars);
-    setFeelHint('#mFeelHint', state.draftStars);
+    paintSheetDoneState();
 
     $('#mCover').src = book.cover || '';
     $('#mCover').alt = (book.title || '') + ' 표지';
@@ -1494,30 +1504,10 @@
       recordOf(key) || { isbn: key };
     const rec = recordOf(key);
     if (act === 'rate') {
-      if (!rec || rec.status !== 'done') {
-        // 반납완료한 대출이력 책: 누르는 즉시 '다 읽었어요'와 평가를 함께 기록한다.
-        const n0 = clampRating(val);
-        if (!n0) return;
-        upsertRecord(book, { status: 'done', stars: n0, finishedAt: book.finishedAt || ymd(new Date()) });
-        if (n0 === 3) {
-          const added0 = (state.similar.items || []).length;
-          toast(added0 ? `👍 좋음! 취향 맞춤 ${added0}권을 추천 서가에 담았어요` : '👍 좋음으로 저장했어요');
-        } else {
-          toast(`${feelLabel(n0)}으로 저장했어요`);
-        }
-        return;
-      }
+      // 카드·서재의 평가 버튼: 누르는 즉시 '다 읽었어요 + 평가'로 저장한다.
       const n = clampRating(val);
-      const next = clampRating(rec.stars) === n ? 0 : n;   // 같은 버튼을 다시 누르면 해제
-      upsertRecord(book, { stars: next });
-      if (next === 3) {
-        const added = (state.similar.items || []).length;
-        toast(added ? `👍 좋음! 취향 맞춤 ${added}권을 추천 서가에 담았어요` : '👍 좋음으로 저장했어요');
-      } else if (next) {
-        toast(`${feelLabel(next)}으로 저장했어요`);
-      } else {
-        toast('평가를 지웠어요');
-      }
+      if (!n) return;
+      saveFeelNow(book, n);
       return;
     }
     if (act === 'detail') {
@@ -1526,7 +1516,7 @@
     }
     if (act === 'want') {
       if (rec && rec.status === 'done') {
-        toast('이미 읽은 책이에요. 별점·감상은 [다 읽었어요]에서 고칠 수 있어요.');
+        toast('이미 다 읽은 책이에요. 평가는 👍 · 🙂 · 😕 버튼을 누르면 바로 저장돼요.');
         return;
       }
       if (rec && rec.status === 'want') {
@@ -1541,11 +1531,14 @@
     }
     if (act === 'done') {
       openModal(book, {});
-      state.draftStars = 0;
-      setFeel($('#mStars'), 0);
-      setFeelHint('#mFeelHint', 0);
-      toast('이 책은 어땠나요? 👍 좋음 · 🙂 보통 · 😕 별로 중에 고르고 [다 읽었어요!]를 눌러 주세요');
-      setTimeout(() => $('#mReview').focus(), 250);
+      const rec1 = recordOf(key);
+      const done1 = !!(rec1 && rec1.status === 'done');
+      state.draftStars = done1 ? clampRating(rec1.stars) : 0;
+      setFeel($('#mStars'), state.draftStars);
+      paintSheetDoneState();
+      toast(done1
+        ? '이미 다 읽은 책이에요. 평가는 버튼을 누르면 바로 저장돼요.'
+        : '이 책은 어땠나요? 👍 · 🙂 · 😕 중 하나만 누르면 다 읽은 책으로 바로 저장돼요.');
       return;
     }
     if (act === 'unwant') {
@@ -1595,6 +1588,81 @@
       : v === 2 ? '🙂 보통 — 평가가 쌓이면 취향 맞춤 추천이 더 정확해져요.'
       : v === 1 ? '😕 별로 — 다음엔 다른 분야 책을 보여 드릴게요.'
       : '이 책은 어땠나요? 하나만 골라 주세요.';
+  }
+
+  /* ---------------- 평가 버튼 = 원터치 '다 읽었어요' 저장 ---------------- */
+  // 👍 좋음 · 🙂 보통 · 😕 별로 를 누르면 그 자리에서 다 읽은 책으로 저장한다.
+  // (예전처럼 평가를 고른 뒤 '다 읽었어요!'를 한 번 더 누를 필요가 없다.)
+  function saveFeelNow(book, n) {
+    if (!book) return null;
+    const v = clampRating(n);
+    if (!v) return null;
+    const key = recKey(book);
+    const prev = state.records[key] || null;
+    const wasDone = !!(prev && prev.status === 'done');
+    const prevStars = prev ? clampRating(prev.stars) : 0;
+    if (wasDone && prevStars === v) {
+      // 같은 평가를 다시 누르면 평가만 지운다. 다 읽은 책 상태는 그대로 둔다.
+      const cleared = upsertRecord(book, { stars: 0 });
+      toast('평가를 지웠어요 · 다 읽은 책으로는 그대로 남아 있어요');
+      return cleared;
+    }
+    const rec = upsertRecord(book, {
+      status: 'done',
+      stars: v,
+      finishedAt: (prev && prev.finishedAt) || book.finishedAt || ymd(new Date()),
+    });
+    const added = (state.similar.items || []).length;
+    const head = wasDone ? `${feelLabel(v)}으로 고쳤어요` : `${feelLabel(v)}! 다 읽은 책으로 저장했어요`;
+    toast(v === FEEL_TOP && added ? `${head} · 취향 맞춤 ${added}권을 추천 서가에 담았어요` : head);
+    return rec;
+  }
+
+  // 상세 시트에서 평가 버튼을 누르면 즉시 저장하고, 시트의 안내·버튼 상태를 맞춘다.
+  function applySheetFeel(n) {
+    const b = state.modalBook;
+    if (!b) return;
+    const rec = saveFeelNow(b, n);
+    if (!rec) return;
+    state.draftStars = clampRating(rec.stars);
+    setFeel($('#mStars'), state.draftStars);
+    paintSheetDoneState();
+  }
+
+  // 상세 시트의 '저장됨' 표시(안내 문구·버튼 이름)를 기록에 맞춘다.
+  function paintSheetDoneState() {
+    const b = state.modalBook;
+    if (!b) return;
+    const rec = recordOf(b.isbn);
+    const done = !!(rec && rec.status === 'done');
+    const stars = done ? clampRating(rec.stars) : 0;
+    const hint = $('#mFeelHint');
+    if (hint) {
+      hint.textContent = done
+        ? `✓ 다 읽은 책으로 저장됐어요${stars ? ' · ' + feelLabel(stars) : ''}. 바꾸려면 다른 버튼을, 지우려면 같은 버튼을 한 번 더 누르세요.`
+        : '👍 · 🙂 · 😕 중 하나만 누르면 다 읽은 책으로 바로 저장돼요.';
+    }
+    const btn = $('#mDone');
+    if (btn) {
+      btn.textContent = done ? '✓ 다 읽었어요 (저장됨)' : '다 읽었어요!';
+      btn.classList.toggle('is-saved', done);
+    }
+    const edit = $('#mEdit');
+    if (edit) edit.hidden = !done;
+    const del = $('#mDelete');
+    if (del) del.hidden = !(done || (rec && rec.status === 'want'));
+  }
+
+  // 한줄 감상은 이미 다 읽은 책에만, 입력을 마치는 순간 저장한다.
+  function saveSheetReview() {
+    const b = state.modalBook;
+    if (!b) return;
+    const rec = recordOf(b.isbn);
+    if (!rec || rec.status !== 'done') return;
+    const text = ($('#mReview').value || '').trim();
+    if (text === (rec.review || '')) return;
+    upsertRecord(b, { review: text });
+    toast(text ? '한줄 감상을 저장했어요' : '한줄 감상을 지웠어요');
   }
 
   /* ---------------- 도서관 계정 패널 ---------------- */
@@ -2063,7 +2131,7 @@
       if (!b) return;
       const rec = recordOf(b.isbn);
       if (rec && rec.status === 'done') {
-        toast('이미 읽은 책이에요. 별점·감상은 [다 읽었어요!]로 저장돼요.');
+        toast('이미 다 읽은 책이에요. 평가는 👍 · 🙂 · 😕 버튼을 누르면 바로 저장돼요.');
         return;
       }
       if (rec && rec.status === 'want') {
@@ -2082,19 +2150,27 @@
       const b = state.modalBook;
       if (!b) return;
       const review = $('#mReview').value.trim();
-      const stars = clampRating(state.draftStars);
+      const prev = recordOf(b.isbn);
+      const wasDone = !!(prev && prev.status === 'done');
+      const stars = clampRating(state.draftStars) || (prev ? clampRating(prev.stars) : 0);
       upsertRecord(b, {
         status: 'done',
         stars,
         review,
-        finishedAt: (recordOf(b.isbn) && recordOf(b.isbn).finishedAt) || ymd(new Date()),
+        finishedAt: (prev && prev.finishedAt) || b.finishedAt || ymd(new Date()),
       });
       closeModal();
-      if (stars === 3) {
-        const added = (state.similar.items || []).length;
-        toast(added ? `👍 좋음! 이 책과 비슷한 ${added}권을 추천 서가에 담았어요` : '서재에 꽂았어요 📖');
+      const added = (state.similar.items || []).length;
+      if (stars === FEEL_TOP) {
+        toast(added
+          ? `👍 좋음! 다 읽은 책으로 저장했어요 · 취향 맞춤 ${added}권을 추천 서가에 담았어요`
+          : '👍 좋음! 다 읽은 책으로 저장했어요');
+      } else if (stars) {
+        toast(`${feelLabel(stars)} · 다 읽은 책으로 저장했어요`);
       } else {
-        toast('서재에 꽂았어요 📖');
+        toast(wasDone
+          ? '한줄 감상을 저장했어요'
+          : '다 읽은 책으로 저장했어요 📖 평가는 나중에 눌러도 돼요');
       }
     });
 
@@ -2116,9 +2192,14 @@
       $('#mReview').value = rec.review || '';
       state.draftStars = clampRating(rec.stars);
       setFeel($('#mStars'), state.draftStars);
-      setFeelHint('#mFeelHint', state.draftStars);
+      paintSheetDoneState();
       $('#mReview').focus();
-      toast('평가·감상을 고친 뒤 [다 읽었어요!]를 눌러 주세요');
+      toast('평가는 👍 · 🙂 · 😕 버튼 한 번이면 저장돼요. 한줄 감상은 적고 나면 바로 저장돼요.');
+    });
+
+    // 한줄 감상: 이미 다 읽은 책이면 입력을 마치는 순간 저장한다(저장 버튼 불필요).
+    ['blur', 'change'].forEach((ev) => {
+      $('#mReview').addEventListener(ev, saveSheetReview);
     });
 
     $('#addRecordBtn').addEventListener('click', () => openAdd());

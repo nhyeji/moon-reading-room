@@ -556,6 +556,9 @@ button { font-family: inherit; }
 .mini-feel.on.feel-good { background: var(--green-soft); color: #1f7a51; border-color: #b7e8cd; }
 .mini-feel.on.feel-soso { background: var(--gold-soft); color: #a5762f; border-color: #f0dcae; }
 .mini-feel.on.feel-bad  { background: var(--red-soft); color: #b24a6b; border-color: #f7cdd9; }
+/* 카드 안에서 바로 누르는 평가 버튼 — 누르면 즉시 다 읽은 책으로 저장 */
+.feel-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-top: 7px; }
+.feel-row + .own-actions, .feel-row + .loan-actions { margin-top: 6px; }
 
 /* ---------- 취향 맞춤 추천 ---------- */
 .taste-panel {
@@ -599,6 +602,10 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
 }
 .sheet-actions > button { flex: 1 1 auto; padding: 11px 10px; font-size: 12.5px; }
 .sheet-actions .ghost { flex: 0 1 auto; }
+/* 평가 버튼으로 이미 저장된 책: '다 읽었어요' 자리에 저장됨을 표시 */
+.sheet-actions #mDone.is-saved {
+  background: var(--green-soft); color: #1f7a51; box-shadow: none; filter: none;
+}
 
 /* ---------- add modal ---------- */
 .add-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
