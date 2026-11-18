@@ -331,6 +331,7 @@
       title: it.title, author: it.author || '', publisher: it.publisher || '',
       year: it.year || '', cover: it.cover || '', kdc: it.kdc || '',
       field: it.kind === 'reserve' ? '예약도서' : '대출도서',
+      loaned: true, loanKind: it.kind,
       sources: [{ name: it.libName || '도서관', note }],
       reason: '',
     };
@@ -868,9 +869,12 @@
     // 추천 출처 / 구매 정보
     const srcs = book.sources || [];
     const headEl = $('#mSourceSection h4');
-    if (headEl) headEl.textContent = book.owned ? '구매 정보 · 메모' : '추천 출처 · 추천 이유';
+    if (headEl) headEl.textContent = book.owned ? '구매 정보 · 메모'
+      : book.loaned ? '도서관 대출·예약 정보' : '추천 출처 · 추천 이유';
     $('#mSourceCount').textContent = book.owned
-      ? `${book.store} 구매` : `🏆 ${srcs.length}곳 추천`;
+      ? `${book.store} 구매`
+      : book.loaned ? (book.loanKind === 'reserve' ? '🔖 예약도서' : '📕 대출도서')
+      : `🏆 ${srcs.length}곳 추천`;
     $('#mSources').innerHTML = book.owned
       ? `<div class="source-item"><b>${esc(book.store)}</b><span>${esc((srcs[0] && srcs[0].note) || '')}</span></div>`
       : (srcs.length
