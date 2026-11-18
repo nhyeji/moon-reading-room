@@ -30,6 +30,9 @@
     draft: null,
     queue: [],
     active: 0,
+    purchased: null,     // 예스24·알라딘 구매도서 (data/purchased_books.json)
+    own: { q: '', store: '' },
+    ownSort: 'recent',
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -67,6 +70,13 @@
   }
   const stars = (n) => '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
   const isbnKey = (s) => String(s || '').replace(/[^0-9Xx]/g, '');
+  // 기록 키: ISBN이 있으면 ISBN, 없으면 own-<id> 같은 문자열 키를 그대로 쓴다.
+  function recKey(x) {
+    const isbn = typeof x === 'string' ? x : (x && x.isbn) || '';
+    const ik = isbnKey(isbn);
+    if (ik) return ik;
+    return typeof x === 'string' ? x : String((x && (x.key || x.isbn)) || '');
+  }
 
   /* ---------------- storage ---------------- */
   function loadLocal() {
@@ -137,6 +147,152 @@
     state.school = cat.school || null;
   }
 
+  /* ---------------- 구매도서 (예스24·알라딘) ---------------- */
+  function ownedBooks() { return (state.purchased && state.purchased.books) || []; }
+  function ownKey(b) { return recKey({ isbn: (b && b.isbn) || '', key: 'own-' + ((b && b.id) || 'x') }); }
+  function ownedByKey(key) {
+    const k = String(key || '');
+    return ownedBooks().find((b) => ownKey(b) === k) || null;
+  }
+  // 모달·기록에서 쓰는 책 객체(구매 정보를 '출처' 자리에 넣어 재사용)
+  function ownedBook(b) {
+    const price = b.price ? b.price.toLocaleString('ko-KR') + '원' : '';
+    const info = [b.boughtAt, b.kind, price, b.qty > 1 ? b.qty + '권' : ''].filter(Boolean).join(' · ');
+    return {
+      isbn: b.isbn || ownKey(b), key: ownKey(b),
+      title: b.title, author: b.author, publisher: b.publisher, year: b.year,
+      cover: b.cover, field: b.category, kdc: b.kdc || '', summary: b.summary || '',
+      owned: true, store: b.store, boughtAt: b.boughtAt, kind: b.kind,
+      orderNo: b.orderNo, price: b.price, note: b.note || '',
+      sources: [{ name: b.store + ' 구매', note: info }],
+      reason: b.note || '',
+    };
+  }
+
+  async function loadPurchased(force) {
+    if (!force && window.__PURCHASED__) { state.purchased = window.__PURCHASED__; return; }
+    try {
+      const url = './data/purchased_books.json' + (force ? '?t=' + Date.now() : '');
+      state.purchased = await getJSON(url);
+    } catch (e) {
+      if (!state.purchased && window.__PURCHASED__) state.purchased = window.__PURCHASED__;
+    }
+  }
+
+  function buildOwnStore() {
+    const sel = $('#ownStore');
+    if (!sel) return;
+    const names = [];
+    ownedBooks().forEach((b) => { if (b.store && !names.includes(b.store)) names.push(b.store); });
+    sel.innerHTML = '<option value="">구매처 전체</option>' +
+      names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    sel.value = state.own.store || '';
+  }
+
+  function ownFiltered() {
+    const q = state.own.q.trim().toLowerCase();
+    const isDone = (b) => { const r = state.records[ownKey(b)]; return r && r.status === 'done'; };
+    let list = ownedBooks().filter((b) => {
+      if (state.own.store && b.store !== state.own.store) return false;
+      if (q) {
+        const hay = `${b.title} ${b.author} ${b.publisher} ${b.category || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    list = list.slice();
+    if (state.ownSort === 'title') {
+      list.sort((a, b) => String(a.title).localeCompare(String(b.title), 'ko'));
+    } else if (state.ownSort === 'store') {
+      list.sort((a, b) => String(a.store).localeCompare(String(b.store), 'ko') ||
+        String(b.boughtAt).localeCompare(String(a.boughtAt)));
+    } else if (state.ownSort === 'unread') {
+      list.sort((a, b) => (isDone(a) ? 1 : 0) - (isDone(b) ? 1 : 0) ||
+        String(b.boughtAt).localeCompare(String(a.boughtAt)));
+    } else {
+      list.sort((a, b) => String(b.boughtAt).localeCompare(String(a.boughtAt)));
+    }
+    return list;
+  }
+
+  function renderOwned() {
+    const box = $('#ownList');
+    if (!box) return;
+    const all = ownedBooks();
+    const P = state.purchased;
+    $('#ownCount').textContent = `${all.length}권`;
+    if (!all.length) {
+      $('#ownSummary').innerHTML = '';
+      box.innerHTML = '';
+      const em = $('#ownEmpty');
+      em.hidden = false;
+      em.textContent = P ? '아직 저장된 구매도서가 없어요.'
+        : '구매도서 목록을 불러오지 못했어요. 서버(python3 server.py)로 열면 data/purchased_books.json 을 읽어요.';
+      return;
+    }
+    const doneN = all.filter((b) => { const r = state.records[ownKey(b)]; return r && r.status === 'done'; }).length;
+    const wantN = all.filter((b) => { const r = state.records[ownKey(b)]; return r && r.status === 'want'; }).length;
+    const storeStats = (P.stores || []).map((s) => {
+      const n = all.filter((b) => b.store === s.name).length;
+      const url = s.orderUrl || s.url;
+      return `<a class="own-stat" href="${esc(url)}" target="_blank" rel="noopener">${esc(s.name)} <b>${n}</b>권 ↗</a>`;
+    }).join('');
+    $('#ownSummary').innerHTML = storeStats +
+      `<span class="own-stat">읽은 책 <b>${doneN}</b>권</span>` +
+      `<span class="own-stat">읽을 책 <b>${wantN}</b>권</span>`;
+    if (P.verifiedAt) {
+      $('#ownSource').textContent = `${P.verifiedAt} 확인 · 예스24(최근 5년) + 알라딘(전체 기간) 주문내역. ` +
+        '어린이도서·동화·그림책·원서만 담았어요.';
+    }
+
+    const list = ownFiltered();
+    $('#ownEmpty').hidden = list.length > 0;
+    if (!list.length) $('#ownEmpty').textContent = '조건에 맞는 구매도서가 없어요.';
+    box.innerHTML = list.map((b) => {
+      const key = ownKey(b);
+      const rec = state.records[key];
+      const isWanted = rec && rec.status === 'want';
+      const isDone = rec && rec.status === 'done';
+      const storeCls = /예스24/.test(b.store) ? 'store-yes24' : 'store-aladin';
+      const tags = [`<span class="own-tag">${esc(b.boughtAt)}</span>`];
+      if (b.kind) tags.push(`<span class="own-tag">${esc(b.kind)}</span>`);
+      if (isDone) tags.push(`<span class="own-tag done">✓ 읽음${rec.finishedAt ? ' ' + esc(rec.finishedAt) : ''}</span>`);
+      else if (isWanted) tags.push('<span class="own-tag want">읽을래요</span>');
+      if (isDone && rec.stars) tags.push(`<span class="own-tag stars">${stars(rec.stars)}</span>`);
+      const price = b.price ? `${b.price.toLocaleString('ko-KR')}원` + (b.qty > 1 ? ` · ${b.qty}권` : '') : '';
+      return `<article class="own-card" data-ownkey="${esc(key)}">
+        <div class="own-cover" data-open="${esc(key)}">${coverHTML(b.cover, b.title)}</div>
+        <div class="own-body">
+          <div class="own-top">
+            <span class="store-badge ${storeCls}">${esc(b.store)}</span>
+            ${tags.join('')}
+          </div>
+          <p class="own-title" data-open="${esc(key)}">${esc(b.title)}</p>
+          <p class="own-sub">${esc(b.author || '')}${b.publisher ? ' · ' + esc(b.publisher) : ''}${b.year ? ' · ' + esc(b.year) : ''}</p>
+          <div class="own-meta">
+            ${b.category ? `<span class="own-tag">${esc(b.category)}</span>` : ''}
+            ${price ? `<span class="own-tag">${esc(price)}</span>` : ''}
+          </div>
+          <div class="own-actions">
+            <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(key)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
+            <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(key)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
+            <button class="own-btn" data-act="detail" data-isbn="${esc(key)}">상세 · 도서관 조회</button>
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+
+    const ex = (P && P.excluded) || [];
+    const exBox = $('#ownExcluded');
+    if (exBox) {
+      exBox.hidden = !ex.length;
+      $('#ownExcludedCount').textContent = ex.length ? `(${ex.length}건)` : '';
+      $('#ownExcludedList').innerHTML = ex.map((x) =>
+        `<div class="excluded-row"><b>${esc(x.store)}</b><span>${esc(x.boughtAt)}</span>` +
+        `<span>${esc(x.title)}</span><span>— ${esc(x.reason)}</span></div>`).join('');
+    }
+  }
+
   async function init() {
     loadLocal();
     $('#todayText').textContent = fmtDate(new Date());
@@ -169,6 +325,8 @@
 
     buildFilters();
     renderLibraryDir();
+    await loadPurchased();
+    buildOwnStore();
     renderAll();
     loadAccounts();
     mergeServerRecords();
@@ -229,6 +387,7 @@
     renderToday();
     renderRead();
     renderGrid();
+    renderOwned();
     $('#totalRec').textContent = state.catalog.length;
     $('#totalDone').textContent = Object.values(state.records).filter((r) => r.status === 'done').length;
   }
@@ -261,7 +420,7 @@
 
   /* ---------------- favorite status mapping ---------------- */
   function statusFor(isbn) {
-    const st = state.status[isbnKey(isbn)];
+    const st = state.status[recKey(isbn)];
     if (!st) return null;
     return st;
   }
@@ -460,7 +619,7 @@
   }
   const inflight = new Set();
   async function checkBook(isbn, force) {
-    const k = isbnKey(isbn);
+    const k = isbnKey(isbn) || String(isbn || '');
     if (inflight.has(k)) return;
     const st = state.status[k];
     if (!force && st && Date.now() - (st.at || 0) < STATUS_TTL) return;
@@ -475,8 +634,9 @@
       return state.status[k];
     }
     inflight.add(k);
-    const book = bookByIsbn(isbn) || state.records[k] || {};
-    const params = new URLSearchParams({ isbn: k, title: book.title || '' });
+    const ownRaw = ownedByKey(k);
+    const book = bookByIsbn(isbn) || (ownRaw ? ownedBook(ownRaw) : null) || state.records[k] || {};
+    const params = new URLSearchParams({ isbn: isbnKey(isbn), title: book.title || '' });
     markCardChecking(k);
     try {
       const r = await getJSON('/api/holdings?' + params.toString());
@@ -506,7 +666,7 @@
   function openModal(book, opts = {}) {
     state.modalBook = book;
     state.modalFav = 'all';
-    const rec = state.records[isbnKey(book.isbn)] || {};
+    const rec = state.records[recKey(book)] || {};
     state.draftStars = rec.stars || 0;
     setStars($('#mStars'), state.draftStars);
 
@@ -525,12 +685,17 @@
     $('#mEdit').hidden = !isRecorded;
     $('#mDelete').hidden = !(rec.status === 'done' || rec.status === 'want');
 
-    // 추천 출처
+    // 추천 출처 / 구매 정보
     const srcs = book.sources || [];
-    $('#mSourceCount').textContent = `🏆 ${srcs.length}곳 추천`;
-    $('#mSources').innerHTML = srcs.length
-      ? srcs.map((s) => `<div class="source-item"><b>${esc(s.name)}</b><span>${esc(s.note || '')}</span></div>`).join('')
-      : `<div class="source-item"><b>출처 미확인</b><span>직접 등록한 책이에요.</span></div>`;
+    const headEl = $('#mSourceSection h4');
+    if (headEl) headEl.textContent = book.owned ? '구매 정보 · 메모' : '추천 출처 · 추천 이유';
+    $('#mSourceCount').textContent = book.owned
+      ? `${book.store} 구매` : `🏆 ${srcs.length}곳 추천`;
+    $('#mSources').innerHTML = book.owned
+      ? `<div class="source-item"><b>${esc(book.store)}</b><span>${esc((srcs[0] && srcs[0].note) || '')}</span></div>`
+      : (srcs.length
+        ? srcs.map((s) => `<div class="source-item"><b>${esc(s.name)}</b><span>${esc(s.note || '')}</span></div>`).join('')
+        : `<div class="source-item"><b>출처 미확인</b><span>직접 등록한 책이에요.</span></div>`);
     $('#mReason').textContent = book.reason || '';
 
     buildFavTabs();
@@ -646,10 +811,10 @@
   }
 
   /* ---------------- record actions ---------------- */
-  function recordOf(isbn) { return state.records[isbnKey(isbn)] || null; }
+  function recordOf(isbn) { return state.records[recKey(isbn)] || null; }
 
   function upsertRecord(book, patch) {
-    const k = isbnKey(book.isbn);
+    const k = recKey(book);
     const prev = state.records[k] || {};
     state.records[k] = {
       isbn: book.isbn || k,
@@ -668,13 +833,22 @@
     return state.records[k];
   }
 
-  function handleAction(act, isbn) {
-    const book = bookByIsbn(isbn) || recordOf(isbn) || { isbn };
-    const rec = recordOf(isbn);
+  function handleAction(act, key) {
+    const ownRaw = ownedByKey(key);
+    const book = bookByIsbn(key) || (ownRaw ? ownedBook(ownRaw) : null) || recordOf(key) || { isbn: key };
+    const rec = recordOf(key);
+    if (act === 'detail') {
+      openModal(book, {});
+      return;
+    }
     if (act === 'want') {
+      if (rec && rec.status === 'done') {
+        toast('이미 읽은 책이에요. 별점·감상은 [다 읽었어요]에서 고칠 수 있어요.');
+        return;
+      }
       if (rec && rec.status === 'want') {
-        delete state.records[isbnKey(isbn)];
-        saveRecords(); renderAll();
+        delete state.records[recKey(key)];
+        saveRecords(); renderAll(); renderOwned();
         toast('읽을래요에서 뺐어요');
       } else {
         upsertRecord(book, { status: 'want' });
@@ -691,14 +865,14 @@
       return;
     }
     if (act === 'unwant') {
-      delete state.records[isbnKey(isbn)];
+      delete state.records[recKey(key)];
       saveRecords(); renderAll();
       return;
     }
     if (act === 'edit') { openModal(book, {}); return; }
     if (act === 'del') {
       if (!confirm(`'${book.title}' 기록을 지울까요?`)) return;
-      delete state.records[isbnKey(isbn)];
+      delete state.records[recKey(key)];
       saveRecords(); renderAll();
       toast('기록을 지웠어요');
     }
@@ -725,10 +899,16 @@
     box.innerHTML = `<div class="acc-card"><div class="acc-top">
       <span class="acc-name">도서관 계정 연동 현황</span><span class="acc-state off">불러오는 중</span>
     </div><p class="acc-body">대출중 도서·반납예정일·예약 현황을 확인하고 있어요.</p></div>`;
+    // 서버가 없어도(정적 호스팅) 확인해 둔 대출·예약 스냅숏을 읽어 표시한다.
     if (state.serverless) {
-      box.innerHTML = `<div class="acc-card"><div class="acc-top">
-        <span class="acc-name">도서관 계정 현황</span><span class="acc-state off">서버 필요</span>
-      </div><p class="acc-body">대출중 도서·반납예정일·예약 현황은 서버(python3 server.py)로 열었을 때 표시돼요.</p></div>`;
+      try {
+        const acc = await getJSON('./data/accounts_status.json');
+        renderAccounts(acc);
+      } catch (e) {
+        box.innerHTML = `<div class="acc-card"><div class="acc-top">
+          <span class="acc-name">도서관 계정 현황</span><span class="acc-state off">불러오기 실패</span>
+        </div><p class="acc-body">대출중 도서·반납예정일·예약 현황을 불러오지 못했어요. Pickle에 요청하시면 확인해 반영해 드려요.</p></div>`;
+      }
       return;
     }
     try {
@@ -771,7 +951,11 @@
     const pickup = state.pickup
       ? `<p class="live-note" style="margin-top:10px">상호대차 수령 도서관 기본값: <b>${esc(state.pickup.name)}</b></p>`
       : '';
-    $('#accounts').innerHTML = html + pickup;
+    const snapNote = acc.updatedAt
+      ? `<p class="live-note" style="margin-top:10px">${esc(acc.updatedAt)} 확인 기준이에요. ` +
+        '실시간 갱신은 Pickle에 요청하시면 확인해 반영해 드려요.</p>'
+      : '';
+    $('#accounts').innerHTML = html + pickup + snapNote;
     $('#liveNote').dataset.accountsAt = acc.updatedAt || '';
   }
 
@@ -1022,9 +1206,13 @@
         x.classList.toggle('is-active', on);
         x.setAttribute('aria-selected', on ? 'true' : 'false');
       });
-      $('#view-shelf').classList.toggle('is-active', state.view === 'shelf');
-      $('#view-rec').classList.toggle('is-active', state.view === 'rec');
+      const viewIds = ['shelf', 'rec', 'owned'];
+      viewIds.forEach((v) => {
+        const el = $('#view-' + v);
+        if (el) el.classList.toggle('is-active', state.view === v);
+      });
       if (state.view === 'rec') observeCards();
+      if (state.view === 'owned') renderOwned();
     }));
 
     $('#goPickBtn').addEventListener('click', () => $$('.tab')[1].click());
@@ -1060,6 +1248,23 @@
     });
     $('#sortBy').addEventListener('change', (e) => { state.sort = e.target.value; renderGrid(); });
 
+    // 구매도서 탭
+    const ownSearch = $('#ownSearch');
+    if (ownSearch) ownSearch.addEventListener('input', (e) => { state.own.q = e.target.value; renderOwned(); });
+    const ownStore = $('#ownStore');
+    if (ownStore) ownStore.addEventListener('change', (e) => { state.own.store = e.target.value; renderOwned(); });
+    const ownSortSel = $('#ownSort');
+    if (ownSortSel) ownSortSel.addEventListener('change', (e) => { state.ownSort = e.target.value; renderOwned(); });
+    const ownRefresh = $('#ownRefreshBtn');
+    if (ownRefresh) ownRefresh.addEventListener('click', async () => {
+      ownRefresh.classList.add('is-loading');
+      await loadPurchased(true);
+      buildOwnStore();
+      renderOwned();
+      ownRefresh.classList.remove('is-loading');
+      toast('구매도서 목록을 다시 불러왔어요');
+    });
+
     // 그리드 / 오늘 목록 / 서재 클릭 위임
     document.addEventListener('click', (e) => {
       const chip = e.target.closest('.chip-lib');
@@ -1071,8 +1276,11 @@
       }
       const openEl = e.target.closest('[data-open]');
       if (openEl) {
-        const book = bookByIsbn(openEl.dataset.open);
-        if (book) openModal(book);
+        const k = openEl.dataset.open;
+        const book = bookByIsbn(k);
+        if (book) { openModal(book); return; }
+        const ownRaw = ownedByKey(k);
+        if (ownRaw) { openModal(ownedBook(ownRaw)); return; }
         return;
       }
       const actEl = e.target.closest('[data-act]');
@@ -1102,7 +1310,7 @@
         return;
       }
       if (rec && rec.status === 'want') {
-        delete state.records[isbnKey(b.isbn)];
+        delete state.records[recKey(b)];
         saveRecords(); renderAll();
         $('#mWant').textContent = '읽을래요';
         toast('읽을래요에서 뺐어요');
@@ -1131,7 +1339,7 @@
       const b = state.modalBook;
       if (!b) return;
       if (!confirm(`'${b.title}' 기록을 지울까요?`)) return;
-      delete state.records[isbnKey(b.isbn)];
+      delete state.records[recKey(b)];
       saveRecords(); renderAll();
       closeModal();
       toast('기록을 지웠어요');

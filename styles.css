@@ -631,3 +631,82 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
 .today-item .cover-fallback span { font-size: 15px; }
 .read-card .cover-fallback { width: 48px; height: 66px; flex: 0 0 auto; font-size: 8.5px; border-radius: 8px; }
 .read-card .cover-fallback span { font-size: 15px; }
+
+/* ---------- 구매도서 (예스24·알라딘) ---------- */
+#view-owned .filters { grid-template-columns: 1fr 1fr; }
+.own-summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
+.own-stat {
+  background: rgba(255, 255, 255, .9); border: 1px solid #fff;
+  border-radius: 14px; padding: 7px 11px; font-size: 11.5px; color: var(--ink-soft);
+  box-shadow: var(--shadow-sm); text-decoration: none; display: inline-block;
+}
+.own-stat b { font-size: 14px; color: var(--ink); letter-spacing: -.3px; }
+
+.owned-list { display: grid; gap: 8px; margin-top: 12px; }
+.own-card {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: rgba(255, 255, 255, .94); border: 1px solid #fff;
+  border-radius: 18px; padding: 11px; box-shadow: var(--shadow-sm);
+}
+.own-cover {
+  width: 62px; height: 86px; border-radius: 10px; overflow: hidden;
+  background: #f6f0fa; flex: 0 0 auto; box-shadow: 0 3px 8px rgba(120, 90, 130, .12);
+}
+.own-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.own-cover .cover-fallback { width: 100%; height: 100%; font-size: 8px; border-radius: 10px; }
+.own-cover .cover-fallback span { font-size: 16px; }
+.own-body { flex: 1; min-width: 0; }
+.own-top { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-bottom: 3px; }
+.store-badge {
+  font-size: 10px; font-weight: 800; border-radius: 999px; padding: 2.5px 7px;
+  letter-spacing: -.1px;
+}
+.store-yes24 { background: #e9f7ee; color: #1f7f4f; }
+.store-aladin { background: #e9f0fb; color: #3f6fb5; }
+.own-title {
+  margin: 0 0 2px; font-size: 13px; font-weight: 700; line-height: 1.35;
+  letter-spacing: -.2px; color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.own-sub { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+.own-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+.own-tag {
+  background: #f6f1fa; color: #6f6478; border-radius: 999px;
+  padding: 2px 7px; font-size: 10px; font-weight: 700;
+}
+.own-tag.done { background: var(--green-soft); color: #1f7a51; }
+.own-tag.want { background: var(--pink-soft); color: #b7567c; }
+.own-tag.stars { background: var(--gold-soft); color: var(--gold); }
+.own-actions { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+.own-btn {
+  border: 1px solid #f0e9f6; background: #fff; border-radius: 999px;
+  padding: 6px 10px; font-size: 11px; font-weight: 700; color: var(--ink-soft);
+  cursor: pointer; box-shadow: var(--shadow-sm);
+}
+.own-btn:active { transform: scale(.96); }
+.own-btn.is-on { border-color: #ffd9e6; background: var(--pink-soft); color: #b7567c; }
+.own-btn.is-done { border-color: #dcf7e7; background: var(--green-soft); color: #1f7a51; }
+
+.owned-excluded {
+  margin-top: 16px; background: rgba(255, 255, 255, .78); border: 1px solid #fff;
+  border-radius: 16px; padding: 10px 13px; box-shadow: var(--shadow-sm);
+}
+.owned-excluded summary {
+  font-size: 12.5px; font-weight: 800; color: var(--ink-soft);
+  cursor: pointer; list-style: none;
+}
+.owned-excluded summary::-webkit-details-marker { display: none; }
+.owned-excluded summary::after { content: "⌄"; float: right; color: var(--muted); }
+.owned-excluded[open] summary::after { content: "⌃"; }
+.excluded-list { margin-top: 9px; display: grid; gap: 4px; }
+.excluded-row {
+  display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--muted);
+  border-bottom: 1px dashed #f2ecf6; padding-bottom: 3px;
+}
+.excluded-row b { color: var(--ink-soft); font-weight: 700; }
+
+/* 탭 3개(책장·추천·구매도서)일 때 좁은 화면에서도 한 줄 유지 */
+.tab { white-space: nowrap; }
+@media (max-width: 420px) {
+  .tab { font-size: 12.5px; padding: 10px 4px; letter-spacing: -.4px; }
+}
