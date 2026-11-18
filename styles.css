@@ -654,8 +654,16 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
   background: rgba(58, 45, 66, .94); color: #fff;
   padding: 10px 16px; border-radius: 999px; font-size: 12.5px;
   z-index: 90; box-shadow: var(--shadow-md); max-width: 88vw; text-align: center;
+  display: inline-flex; align-items: center; gap: 9px;
 }
 .toast[hidden] { display: none; }
+.toast-msg { min-width: 0; }
+.toast-btn {
+  border: 1px solid rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .16);
+  color: #fff; border-radius: 999px; padding: 4px 10px; font-size: 11.5px;
+  font-weight: 800; font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.toast-btn:active { transform: scale(.95); }
 
 /* ---------- small screens ---------- */
 @media (max-width: 400px) {
@@ -764,6 +772,25 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
 .own-btn:active { transform: scale(.96); }
 .own-btn.is-on { border-color: #ffd9e6; background: var(--pink-soft); color: #b7567c; }
 .own-btn.is-done { border-color: #dcf7e7; background: var(--green-soft); color: #1f7a51; }
+/* 목록에서 직접 지우기 — 눈에 덜 띄는 작은 삭제 버튼 */
+.own-btn.del { color: #b3607a; border-color: #f6e2ea; background: #fffafc; }
+.own-btn.del:active { background: var(--pink-soft); transform: scale(.96); }
+
+/* 삭제한 책 되돌리기 줄 (지운 책이 있을 때만 보인다) */
+.undo-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 8px 0 2px; padding: 8px 12px; border-radius: 14px;
+  background: rgba(255, 255, 255, .88); border: 1px dashed #e7d9ec;
+  font-size: 11.5px; color: #7b6f84; box-shadow: var(--shadow-sm);
+}
+.undo-bar[hidden] { display: none; }
+.undo-bar b { color: var(--ink); }
+.undo-btn {
+  border: 1px solid #ffd9e6; background: var(--pink-soft); color: #b7567c;
+  border-radius: 999px; padding: 5px 11px; font-size: 11.5px; font-weight: 800;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.undo-btn:active { transform: scale(.96); }
 
 .owned-excluded {
   margin-top: 16px; background: rgba(255, 255, 255, .78); border: 1px solid #fff;

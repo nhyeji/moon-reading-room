@@ -146,6 +146,11 @@
 
       <div class="loan-summary" id="loanSummary"></div>
 
+      <div class="undo-bar" id="loanUndo" hidden>
+        <span>🗑 목록에서 지운 책 <b id="loanUndoCount">0</b>권</span>
+        <button type="button" class="undo-btn" id="loanUndoBtn">되돌리기</button>
+      </div>
+
       <div class="loan-pills" id="loanStatusPills" role="group" aria-label="대출 상태 필터">
         <button class="pill" type="button" data-loan-status="active">📕 대출·예약 중 <b>0</b></button>
         <button class="pill" type="button" data-loan-status="history">📗 2026년 반납완료 <b>0</b></button>
@@ -177,6 +182,11 @@
       <p class="live-note" id="ownSource">예스24·알라딘 주문내역에서 확인한 구매 도서예요.</p>
 
       <div class="own-summary" id="ownSummary"></div>
+
+      <div class="undo-bar" id="ownUndo" hidden>
+        <span>🗑 목록에서 지운 책 <b id="ownUndoCount">0</b>권</span>
+        <button type="button" class="undo-btn" id="ownUndoBtn">되돌리기</button>
+      </div>
 
       <div class="search-row">
         <label class="search-box">
@@ -253,6 +263,7 @@
       <button class="ghost" id="mClose2">닫기</button>
       <button class="ghost" id="mEdit" hidden>✏️ 수정</button>
       <button class="ghost danger" id="mDelete" hidden>삭제</button>
+      <button class="ghost danger" id="mHide" hidden>🗑 목록에서 삭제</button>
     </div>
   </div>
 </div>

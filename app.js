@@ -8,6 +8,7 @@
 
   const LS_RECORDS = 'moon-reading-room:records:v1';
   const LS_STATUS = 'moon-reading-room:status:v1';
+  const LS_HIDDEN = 'moon-reading-room:hidden:v1';
   const STATUS_TTL = 30 * 60 * 1000; // 30분
 
   const state = {
@@ -31,6 +32,8 @@
     queue: [],
     active: 0,
     purchased: null,     // 예스24·알라딘 구매도서 (data/purchased_books.json)
+    hidden: { loans: {}, purchases: {} },  // 목록에서 직접 지운 책 (키 -> { at, title })
+    hideTarget: null,    // 상세 시트의 '목록에서 삭제' 대상
     own: { q: '', store: '' },
     ownSort: 'recent',
     accounts: null,      // 도서관 계정 대출·예약 (data/accounts_status.json)
@@ -45,9 +48,28 @@
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   /* ---------------- util ---------------- */
-  function toast(msg, ms = 2200) {
+  // action 을 주면 토스트 안에 '실행 취소' 같은 버튼이 함께 놓인다.
+  function toast(msg, ms = 2200, action = null) {
     const el = $('#toast');
-    el.textContent = msg;
+    if (!el) return;
+    el.innerHTML = '';
+    const span = document.createElement('span');
+    span.className = 'toast-msg';
+    span.textContent = msg;
+    el.appendChild(span);
+    if (action && action.label) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'toast-btn';
+      btn.textContent = action.label;
+      btn.addEventListener('click', () => {
+        clearTimeout(toast._t);
+        el.hidden = true;
+        action.run();
+      });
+      el.appendChild(btn);
+      ms = Math.max(ms, 6000);
+    }
     el.hidden = false;
     clearTimeout(toast._t);
     toast._t = setTimeout(() => { el.hidden = true; }, ms);
@@ -138,6 +160,13 @@
   function loadLocal() {
     try { state.records = JSON.parse(localStorage.getItem(LS_RECORDS) || '{}') || {}; } catch (e) { state.records = {}; }
     try { state.status = JSON.parse(localStorage.getItem(LS_STATUS) || '{}') || {}; } catch (e) { state.status = {}; }
+    try {
+      const h = JSON.parse(localStorage.getItem(LS_HIDDEN) || '{}') || {};
+      state.hidden = {
+        loans: (h.loans && typeof h.loans === 'object') ? h.loans : {},
+        purchases: (h.purchases && typeof h.purchases === 'object') ? h.purchases : {},
+      };
+    } catch (e) { state.hidden = { loans: {}, purchases: {} }; }
     normalizeRatings();
   }
   function saveRecords() {
@@ -162,6 +191,69 @@
     });
     state.status = pruned;
     localStorage.setItem(LS_STATUS, JSON.stringify(pruned));
+  }
+
+  /* ---------------- 목록에서 직접 지운 책 ----------------
+   * 대출·구매 목록에서 '삭제'한 책은 목록에서만 감춘다(기록·평가는 그대로).
+   * 숨김은 브라우저(localStorage)에 남아 새로고침해도 유지되고,
+   * 탭의 '되돌리기'로 언제든 다시 보이게 할 수 있다. */
+  function hiddenTable(scope) { return scope === 'purchase' ? state.hidden.purchases : state.hidden.loans; }
+  function saveHidden() {
+    try { localStorage.setItem(LS_HIDDEN, JSON.stringify(state.hidden)); } catch (e) { /* 저장 실패는 무시 */ }
+  }
+  // 대출·예약·반납 이력의 숨김 키 — 새로고침해도 같은 책을 가리키도록 ISBN+계정+종류로 만든다.
+  function loanHideKey(it) {
+    if (!it) return '';
+    const sub = isbnKey(it.isbn) || String(it.title || '');
+    return [it.kind || '', it.libKey || '', sub,
+      it.kind === 'history' ? String(it.loanedAt || '') : ''].join('|');
+  }
+  function isLoanHidden(it) { return !!state.hidden.loans[loanHideKey(it)]; }
+  function isOwnHidden(b) { return !!state.hidden.purchases[ownKey(b)]; }
+  function hiddenLoanItems() {
+    return rawActiveLoanItems().concat(rawHistoryItems()).filter(isLoanHidden);
+  }
+  function hiddenOwnedBooks() { return rawOwnedBooks().filter(isOwnHidden); }
+  function hiddenScopeCount(scope) {
+    return scope === 'purchase' ? hiddenOwnedBooks().length : hiddenLoanItems().length;
+  }
+  function hideFromList(scope, key) {
+    const table = hiddenTable(scope);
+    if (!key || table[key]) return null;
+    let title = '';
+    if (scope === 'purchase') { const b = ownedByKey(key); title = (b && b.title) || ''; }
+    else { const it = loanByKey(key); title = (it && it.title) || ''; }
+    table[key] = { at: Date.now(), title: title };
+    saveHidden();
+    renderAll();
+    return { scope: scope, key: key };
+  }
+  function restoreOne(scope, key) {
+    const table = hiddenTable(scope);
+    if (!table[key]) return false;
+    delete table[key];
+    saveHidden();
+    renderAll();
+    return true;
+  }
+  // 탭의 '삭제한 책 N권 되돌리기' — 그 탭에서 지운 책을 모두 다시 보이게 한다.
+  function restoreHidden(scope) {
+    const n = hiddenScopeCount(scope);
+    if (!n) return 0;
+    state.hidden[scope === 'purchase' ? 'purchases' : 'loans'] = {};
+    saveHidden();
+    renderAll();
+    return n;
+  }
+  function renderUndoBar(boxSel, countSel, scope) {
+    const box = $(boxSel);
+    if (!box) return;
+    const n = hiddenScopeCount(scope);
+    box.hidden = !n;
+    if (n) {
+      const c = $(countSel);
+      if (c) c.textContent = String(n);
+    }
   }
 
   /* ---------------- api ---------------- */
@@ -205,7 +297,9 @@
   }
 
   /* ---------------- 구매도서 (예스24·알라딘) ---------------- */
-  function ownedBooks() { return (state.purchased && state.purchased.books) || []; }
+  function rawOwnedBooks() { return (state.purchased && state.purchased.books) || []; }
+  // 목록에서 지운 책은 빼고 보여 준다(보유 표시·추천에서도 함께 사라진다).
+  function ownedBooks() { return rawOwnedBooks().filter((b) => !isOwnHidden(b)); }
   function ownKey(b) { return recKey({ isbn: (b && b.isbn) || '', key: 'own-' + ((b && b.id) || 'x') }); }
   function ownedByKey(key) {
     const k = String(key || '');
@@ -216,7 +310,7 @@
     const price = b.price ? b.price.toLocaleString('ko-KR') + '원' : '';
     const info = [b.boughtAt, b.kind, price, b.qty > 1 ? b.qty + '권' : ''].filter(Boolean).join(' · ');
     return {
-      isbn: b.isbn || ownKey(b), key: ownKey(b),
+      isbn: b.isbn || ownKey(b), key: ownKey(b), hideKey: ownKey(b),
       title: b.title, author: b.author, publisher: b.publisher, year: b.year,
       cover: b.cover, field: b.category, kdc: b.kdc || '', summary: b.summary || '',
       owned: true, store: b.store, boughtAt: b.boughtAt, kind: b.kind,
@@ -551,12 +645,15 @@
     const all = ownedBooks();
     const P = state.purchased;
     $('#ownCount').textContent = `${all.length}권`;
+    renderUndoBar('#ownUndo', '#ownUndoCount', 'purchase');
     if (!all.length) {
       $('#ownSummary').innerHTML = '';
       box.innerHTML = '';
       const em = $('#ownEmpty');
+      const hidN = hiddenOwnedBooks().length;
       em.hidden = false;
-      em.textContent = P ? '아직 저장된 구매도서가 없어요.'
+      em.textContent = P ? (hidN ? `목록에서 지운 책 ${hidN}권은 위의 [되돌리기]로 다시 볼 수 있어요.`
+        : '아직 저장된 구매도서가 없어요.')
         : '구매도서 목록을 불러오지 못했어요. 서버(python3 server.py)로 열면 data/purchased_books.json 을 읽어요.';
       return;
     }
@@ -608,6 +705,7 @@
             <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(key)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
             <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(key)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
             <button class="own-btn" data-act="detail" data-isbn="${esc(key)}">상세 · 도서관 조회</button>
+            <button type="button" class="own-btn del" data-act="hide" data-scope="purchase" data-isbn="${esc(key)}" aria-label="목록에서 삭제">✕ 삭제</button>
           </div>
         </div>
       </article>`;
@@ -626,7 +724,7 @@
 
   /* ---------------- 대출도서 (도서관 계정 대출·예약) ---------------- */
   // 지금 대출중·예약중인 책
-  function activeLoanItems() {
+  function rawActiveLoanItems() {
     const out = [];
     ((state.accounts && state.accounts.libraries) || []).forEach((lib) => {
       const base = {
@@ -640,7 +738,7 @@
   }
 
   // 2026년에 빌렸다가 반납한 책 (accounts_status.json → loanHistory2026)
-  function historyItems() {
+  function rawHistoryItems() {
     const out = [];
     ((state.accounts && state.accounts.loanHistory2026) || []).forEach((h, i) => {
       const acct = h.acct || '';
@@ -655,6 +753,10 @@
     });
     return out;
   }
+
+  // 목록에서 지운 책은 빼고 보여 준다(탭 배지·요약·필터 숫자도 함께 줄어든다).
+  function activeLoanItems() { return rawActiveLoanItems().filter((it) => !isLoanHidden(it)); }
+  function historyItems() { return rawHistoryItems().filter((it) => !isLoanHidden(it)); }
 
   // 화면에 놓는 전체 목록(대출·예약 먼저, 그다음 반납 이력)
   function loanItems() { return activeLoanItems().concat(historyItems()); }
@@ -683,7 +785,7 @@
         : [(it.dueAt ? `반납 ${it.dueAt}` : ''), (it.pickup ? `수령 ${it.pickup}` : '')].filter(Boolean).join(' · ');
     const note = [it.library || '', kindTxt, tail].filter(Boolean).join(' · ');
     return {
-      isbn: it.isbn || ('loan-' + it.ref), key: loanRecKey(it),
+      isbn: it.isbn || ('loan-' + it.ref), key: loanRecKey(it), hideKey: loanHideKey(it),
       title: it.title, author: it.author || '', publisher: it.publisher || '',
       year: it.year || '', cover: it.cover || '', kdc: it.kdc || '',
       field: it.kind === 'history' ? (it.field || '문학') : it.kind === 'reserve' ? '예약도서' : '대출도서',
@@ -743,6 +845,7 @@
 
   function loanCardHTML(it) {
     const rk = loanRecKey(it);
+    const hk = loanHideKey(it);
     const rec = state.records[rk];
     const isWanted = rec && rec.status === 'want';
     const isDone = rec && rec.status === 'done';
@@ -772,13 +875,15 @@
       ? `<span class="loan-tag date">🗓️ ${esc(dotDate(it.loanedAt))} → ${esc(dotDate(it.returnedAt))}</span>`
       : loanDueTag(it);
     const feel = `<div class="loan-feel">${FEEL_ORDER.map((n) => `<button type="button" class="mini-feel ${FEELS[n].cls}${stars === n ? ' on' : ''}" data-act="rate" data-isbn="${esc(rk)}" data-val="${n}" aria-label="${FEELS[n].label}" aria-pressed="${stars === n ? 'true' : 'false'}">${FEELS[n].icon} ${FEELS[n].label}</button>`).join('')}</div>`;
+    const delBtn = `<button type="button" class="own-btn del" data-act="hide" data-scope="loan" data-isbn="${esc(hk)}" aria-label="목록에서 삭제">✕ 삭제</button>`;
     const actions = it.kind === 'history'
-      ? `<div class="loan-actions">${feel}<button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button></div>`
+      ? `<div class="loan-actions">${feel}<button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button>${delBtn}</div>`
       : `<div class="loan-actions">
             ${feel}
             <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(rk)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
             <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(rk)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
             <button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button>
+            ${delBtn}
           </div>`;
     return `<article class="loan-card${it.kind === 'history' ? ' is-history' : ''}" data-ref="${esc(it.ref)}">
         <div class="loan-cover" data-act="detail" data-isbn="${esc(rk)}">${coverHTML(it.cover, it.title)}</div>
@@ -853,12 +958,16 @@
       (hist.length ? `<span class="loan-stat hist">📗 2026년 반납 <b>${hist.length}</b>권</span>` : '') +
       notices;
 
+    renderUndoBar('#loanUndo', '#loanUndoCount', 'loan');
+
     const list = loanFiltered();
     $('#loanEmpty').hidden = list.length > 0;
     if (!list.length) {
+      const hidN = hiddenLoanItems().length;
       $('#loanEmpty').textContent = !acc ? '대출·예약 현황을 불러오지 못했어요.'
         : st === 'history' ? '2026년에 반납한 책이 없어요.'
-        : (all.length ? '조건에 맞는 대출·예약 도서가 없어요.' : '지금 대출·예약 중인 책이 없어요.');
+        : (all.length ? '조건에 맞는 대출·예약 도서가 없어요.'
+        : (hidN ? `목록에서 지운 책 ${hidN}권은 위의 [되돌리기]로 다시 볼 수 있어요.` : '지금 대출·예약 중인 책이 없어요.'));
     }
 
     box.innerHTML = list.map(loanCardHTML).join('');
@@ -1344,6 +1453,14 @@
     const isRecorded = rec.status === 'done';
     $('#mEdit').hidden = !isRecorded;
     $('#mDelete').hidden = !(rec.status === 'done' || rec.status === 'want');
+    // 구매도서·대출도서는 상세 시트에서도 바로 목록에서 지울 수 있다.
+    const canHide = !!(book.hideKey && (book.owned || book.loaned));
+    state.hideTarget = canHide ? { scope: book.owned ? 'purchase' : 'loan', key: book.hideKey } : null;
+    const mHide = $('#mHide');
+    if (mHide) {
+      mHide.hidden = !canHide;
+      mHide.textContent = book.owned ? '🗑 목록에서 삭제' : '🗑 대출 목록에서 삭제';
+    }
 
     // 추천 출처 / 구매 정보
     const srcs = book.sources || [];
@@ -1496,7 +1613,17 @@
     return state.records[k];
   }
 
-  function handleAction(act, key, val) {
+  function handleAction(act, key, val, scope) {
+    if (act === 'hide') {
+      // 목록에서 직접 삭제 — 목록에서만 감추고 기록·평가는 그대로 둔다.
+      const sc = scope === 'purchase' ? 'purchase' : 'loan';
+      if (!hideFromList(sc, key)) return;
+      toast('목록에서 삭제했어요', 6000, {
+        label: '실행 취소',
+        run: () => { if (restoreOne(sc, key)) toast('되돌렸어요'); },
+      });
+      return;
+    }
     const ownRaw = ownedByKey(key);
     const poolRaw = poolByIsbn(key);
     const book = bookByIsbn(key) || (poolRaw ? enrichedPoolBook(poolRaw) : null) ||
@@ -2111,7 +2238,7 @@
       const actEl = e.target.closest('[data-act]');
       if (actEl) {
         e.stopPropagation();
-        handleAction(actEl.dataset.act, actEl.dataset.isbn, actEl.dataset.val);
+        handleAction(actEl.dataset.act, actEl.dataset.isbn, actEl.dataset.val, actEl.dataset.scope);
         return;
       }
       const favTab = e.target.closest('[data-fav]');
@@ -2182,6 +2309,31 @@
       saveRecords(); renderAll();
       closeModal();
       toast('기록을 지웠어요');
+    });
+
+    // 상세 시트에서 목록(구매·대출)에서 바로 지우기
+    const mHide = $('#mHide');
+    if (mHide) mHide.addEventListener('click', () => {
+      const t = state.hideTarget;
+      if (!t) return;
+      closeModal();
+      if (!hideFromList(t.scope, t.key)) return;
+      toast('목록에서 삭제했어요', 6000, {
+        label: '실행 취소',
+        run: () => { if (restoreOne(t.scope, t.key)) toast('되돌렸어요'); },
+      });
+    });
+
+    // 탭의 '삭제한 책 N권 되돌리기'
+    const loanUndoBtn = $('#loanUndoBtn');
+    if (loanUndoBtn) loanUndoBtn.addEventListener('click', () => {
+      const n = restoreHidden('loan');
+      if (n) toast(`대출도서 ${n}권을 목록에 다시 넣었어요`);
+    });
+    const ownUndoBtn = $('#ownUndoBtn');
+    if (ownUndoBtn) ownUndoBtn.addEventListener('click', () => {
+      const n = restoreHidden('purchase');
+      if (n) toast(`구매도서 ${n}권을 목록에 다시 넣었어요`);
     });
 
     $('#mEdit').addEventListener('click', () => {
