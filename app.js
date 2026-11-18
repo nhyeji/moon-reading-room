@@ -2212,7 +2212,8 @@
     const meta = [lib.gu, lib.scope].filter(Boolean).join(' · ');
     const links = [];
     if (q) {
-      links.push(`<a class="lib-link primary" href="${esc(libTarget(lib, q))}" target="_blank" rel="noopener">📖 소장·대출 확인</a>`);
+      const findLabel = lib.search ? '📖 소장·대출 확인' : '📖 홈페이지에서 찾기';
+      links.push(`<a class="lib-link primary" href="${esc(libTarget(lib, q))}" target="_blank" rel="noopener">${findLabel}</a>`);
       links.push(`<a class="lib-link" href="${esc(lib.site)}" target="_blank" rel="noopener">🏠 홈페이지</a>`);
     } else {
       links.push(`<a class="lib-link primary" href="${esc(lib.site)}" target="_blank" rel="noopener">🏠 도서관 홈페이지</a>`);
@@ -2267,7 +2268,7 @@
         </div>
       </article>`).join('');
       const others = SEOUL_ON_LIBS.filter((l) => l.ebook && l.gu !== '광진구');
-      const qq = q ? `‘${esc(q)}’을(를) ` : '';
+      const qq = q ? `‘${esc(q)}’ 검색어로 ` : '';
       eb.innerHTML = rows + `<article class="lib-card is-ebook">
         <div class="lib-card-top"><b>서울온 구립 전자도서관</b><span class="lib-badge ebook">${others.length}곳</span></div>
         <p class="lib-note">${qq}구립도서관마다 전자도서관을 따로 운영합니다. 회원증으로 로그인하면 바로 대출돼요.</p>
