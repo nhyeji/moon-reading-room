@@ -106,6 +106,7 @@
       <div class="shelf-head">
         <h3>✨ 추천 서가 <span id="recCount">0권</span></h3>
         <div class="shelf-tools">
+          <button class="mini-btn taste-btn" id="tasteFilterBtn" aria-pressed="false" title="내 평가와 비슷한 책만 보기">💖 내 별점 맞춤</button>
           <button class="mini-btn" id="checkAllBtn" title="보이는 책들의 대출상태를 실시간 조회">실시간 조회</button>
           <select id="sortBy" aria-label="정렬">
             <option value="sources">추천 많은 순</option>
@@ -114,6 +115,16 @@
           </select>
         </div>
       </div>
+
+      <div class="taste-panel" id="tastePanel" hidden>
+        <div class="taste-top">
+          <h4>💖 취향 맞춤 <span class="taste-count" id="tasteCount"></span></h4>
+        </div>
+        <p class="taste-note" id="tasteNote"></p>
+        <div class="grid taste-grid" id="tasteRow"></div>
+      </div>
+
+      <p class="taste-prompt" id="tastePrompt" hidden></p>
 
       <p class="legend">
         <i class="dot ok"></i>대출가능
@@ -223,8 +234,9 @@
       </section>
 
       <section class="sheet-section">
-        <h4>별점</h4>
-        <div class="stars" id="mStars"></div>
+        <h4>이 책은 어땠나요?</h4>
+        <div class="feel-set" id="mStars"></div>
+        <p class="feel-hint" id="mFeelHint"></p>
         <h4>한줄 감상 (선택)</h4>
         <textarea id="mReview" rows="3" placeholder="기억나는 장면, 새로 알게 된 사실"></textarea>
       </section>
@@ -287,8 +299,9 @@
       <div class="lookup-result" id="aResult" hidden></div>
 
       <section class="sheet-section" id="aRecordBox">
-        <h4>별점</h4>
-        <div class="stars" id="aStars"></div>
+        <h4>이 책은 어땠나요?</h4>
+        <div class="feel-set" id="aStars"></div>
+        <p class="feel-hint" id="aFeelHint"></p>
         <h4>한줄 감상 (선택)</h4>
         <textarea id="aReview" rows="2" placeholder="기억나는 장면, 새로 알게 된 사실"></textarea>
         <label class="field"><span>읽은 날</span><input type="date" id="aDate"></label>

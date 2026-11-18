@@ -19,7 +19,7 @@
     school: null,
     status: {},          // isbn -> { gb, gj, at }
     records: {},         // isbn -> record
-    filter: { q: '', source: '', field: '', lib: '' },
+    filter: { q: '', source: '', field: '', lib: '', taste: false },
     sort: 'sources',
     view: 'shelf',
     modalBook: null,
@@ -35,6 +35,8 @@
     ownSort: 'recent',
     accounts: null,      // 도서관 계정 대출·예약 (data/accounts_status.json)
     loan: { status: '', acct: '', sort: 'due' },
+    pool: null,          // 취향 맞춤 후보 풀 (data/similar_pool.json)
+    similar: { items: [], catalog: {}, basis: null, level: 0, ratedCount: 0 },
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -70,7 +72,33 @@
     const d = new Date(ts);
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
-  const stars = (n) => '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
+  /* ---------------- 3단계 평가: 👍 좋음(3) · 🙂 보통(2) · 😕 별로(1) ---------------- */
+  const FEELS = {
+    1: { icon: '😕', label: '별로', cls: 'feel-bad' },
+    2: { icon: '🙂', label: '보통', cls: 'feel-soso' },
+    3: { icon: '👍', label: '좋음', cls: 'feel-good' },
+  };
+  const FEEL_ORDER = [3, 2, 1];   // 화면에 놓이는 순서(좋음 → 보통 → 별로)
+  const FEEL_TOP = 3;
+  // 예전 5단계 별점(4·5점)은 새 3단계(👍 좋음)로 정리한다.
+  function clampRating(n) {
+    const v = Number(n) || 0;
+    if (v <= 0) return 0;
+    return v > FEEL_TOP ? FEEL_TOP : Math.max(1, Math.round(v));
+  }
+  function feelOf(n) { return FEELS[clampRating(n)] || null; }
+  function feelLabel(n) { const f = feelOf(n); return f ? `${f.icon} ${f.label}` : ''; }
+  function feelChip(n, extra = '') {
+    const f = feelOf(n);
+    return f ? `<span class="feel ${f.cls}${extra ? ' ' + extra : ''}">${f.icon} ${f.label}</span>` : '';
+  }
+  // 받침에 따라 '과/와'를 고른다.
+  function joParticle(w) {
+    const s = String(w || '');
+    const ch = s.charCodeAt(s.length - 1);
+    if (ch >= 0xAC00 && ch <= 0xD7A3) return ((ch - 0xAC00) % 28) ? '과' : '와';
+    return '와';
+  }
   const isbnKey = (s) => String(s || '').replace(/[^0-9Xx]/g, '');
   // 기록 키: ISBN이 있으면 ISBN, 없으면 own-<id> 같은 문자열 키를 그대로 쓴다.
   function recKey(x) {
@@ -81,9 +109,26 @@
   }
 
   /* ---------------- storage ---------------- */
+  // 예전 5단계 별점(4~5점)을 3단계 평가로 옮겨 저장한다.
+  function normalizeRatings() {
+    let changed = false;
+    Object.keys(state.records).forEach((k) => {
+      const r = state.records[k];
+      if (!r || typeof r !== 'object') return;
+      const v = Number(r.stars) || 0;
+      const c = clampRating(v);
+      if (v !== c) { r.stars = c; changed = true; }
+    });
+    if (changed) {
+      try { localStorage.setItem(LS_RECORDS, JSON.stringify(state.records)); } catch (e) { /* 저장 실패는 무시 */ }
+    }
+    return changed;
+  }
+
   function loadLocal() {
     try { state.records = JSON.parse(localStorage.getItem(LS_RECORDS) || '{}') || {}; } catch (e) { state.records = {}; }
     try { state.status = JSON.parse(localStorage.getItem(LS_STATUS) || '{}') || {}; } catch (e) { state.status = {}; }
+    normalizeRatings();
   }
   function saveRecords() {
     localStorage.setItem(LS_RECORDS, JSON.stringify(state.records));
@@ -169,6 +214,248 @@
       sources: [{ name: b.store + ' 구매', note: info }],
       reason: b.note || '',
     };
+  }
+
+  /* ---------------- 취향 맞춤 후보 풀 (data/similar_pool.json) ---------------- */
+  function poolBooks() { return (state.pool && state.pool.books) || []; }
+  function poolByIsbn(isbn) {
+    const k = isbnKey(isbn);
+    if (!k) return null;
+    return poolBooks().find((b) => isbnKey(b.isbn) === k) || null;
+  }
+  async function loadPool(force) {
+    if (!force && window.__SIMILAR_POOL__) { state.pool = window.__SIMILAR_POOL__; return; }
+    try {
+      state.pool = await getJSON('./data/similar_pool.json' + (force ? '?t=' + Date.now() : ''));
+    } catch (e) {
+      if (!state.pool && window.__SIMILAR_POOL__) state.pool = window.__SIMILAR_POOL__;
+    }
+  }
+  // 모달·기록에서 쓰는 취향 맞춤 책 객체(추천 이유를 '추천 출처' 자리에 넣는다)
+  function enrichedPoolBook(b) {
+    if (!b) return null;
+    const it = (state.similar.items || []).find((x) => isbnKey(x.book.isbn) === isbnKey(b.isbn));
+    const reason = it ? matchReason(it) : '';
+    return Object.assign({}, b, {
+      sources: reason ? [{ name: '💖 취향 맞춤', note: reason }] : [],
+      reason,
+    });
+  }
+
+  /* ---------------- 취향 유사도 추천 엔진 ---------------- */
+  // 제목·작가에서 알아보는 시리즈/주제 (책마다 태그를 일일이 적지 않아도 되도록)
+  const TAG_RULES = [
+    [/수상한\s*(도서관|식당|아파트|우리\s*반|친구\s*집|편의점|학원|운동장|고물상|지하실|놀이터|휴게소)/, ['추리', '미스터리', '시리즈', '한국창작동화'], '수상한 시리즈'],
+    [/푸른 사자 와니니/, ['동물', '성장', '모험', '시리즈', '한국창작동화'], '푸른 사자 와니니'],
+    [/구덩이|Holes/i, ['성장', '모험', '영미동화'], ''],
+    [/Frank and Joe Hardy|Hardy Boys/i, ['추리', '미스터리', '원서', '챕터북', '시리즈'], 'Hardy Boys'],
+    [/A to Z Mysteries/i, ['추리', '미스터리', '원서', '챕터북', '시리즈'], 'A to Z Mysteries'],
+    [/마법의 시간여행|Magic Tree House/i, ['판타지', '모험', '역사', '시리즈', '챕터북'], '마법의 시간여행'],
+    [/지대넓얕/, ['인문', '교양', '경제', '시리즈'], '지대넓얕'],
+    [/K탐정/, ['사회', '법', '경제', '교양', '시리즈'], 'K탐정'],
+    [/별똥별 아줌마/, ['과학', '우주', '천문', '시리즈'], '별똥별 아줌마'],
+    [/제돌이|해오리|바다로 돌아간/, ['바다', '동물', '자연', '환경'], ''],
+    [/전천당|이상한 과자/, ['판타지', '동화', '시리즈'], '이상한 과자 가게 전천당'],
+    [/만복이네 떡집|소원 떡집/, ['판타지', '동화', '시리즈', '한국창작동화'], '만복이네 떡집'],
+    [/설민석|한국사 대모험/, ['역사', '한국사', '인물', '시리즈'], ''],
+    [/용선생/, ['역사', '한국사', '시리즈'], '용선생'],
+    [/시끌벅적 한국사/, ['역사', '한국사'], ''],
+    [/아홉 살 (마음|느낌) 사전/, ['철학', '감정', '언어', '시리즈'], '아홉 살 사전'],
+    [/읽으면서 바로 써먹는/, ['언어', '어휘', '시리즈'], '읽으면서 바로 써먹는'],
+    [/다른그림찾기|숨은그림찾기|스도쿠/, ['놀이', '집중력', '예술'], ''],
+    [/사흘만 볼 수 있다면|헬렌 켈러/, ['인물', '감동'], ''],
+    [/샬롯의 거미줄|스튜어트 리틀|Stuart Little/i, ['동물', '판타지', '고전', '영미동화'], ''],
+    [/내 친구 윈딕시|에드워드 툴레인/, ['성장', '감동', '영미동화', '동물'], ''],
+    [/마당을 나온 암탉|나쁜 어린이 표/, ['성장', '한국창작동화'], ''],
+    [/5번 레인|축제는 언제나|오백 년째/, ['성장', '청소년', '한국창작동화'], ''],
+    [/웨이사이드|Wayside/i, ['학교', '유머', '원서', '챕터북', '시리즈'], '웨이사이드 스쿨'],
+    [/윔피\s*키드/, ['학교', '유머', '챕터북', '시리즈'], '윔피 키드'],
+    [/신기한 스쿨버스/, ['과학', '자연', '시리즈'], '신기한 스쿨버스'],
+    [/셜록 홈즈/, ['추리', '미스터리', '시리즈'], '명탐정 셜록 홈즈'],
+  ];
+  const FIELD_TAGS = {
+    '동화·이야기': ['동화'], '과학': ['과학'], '역사·인물': ['역사', '인물'],
+    '사회·경제': ['사회', '경제'], '철학·가치': ['철학'], '언어': ['언어'],
+    '예술': ['예술'], '지식·교양': ['지식·교양'],
+    '어린이·청소년 소설': ['동화'], '초등 창작동화': ['한국창작동화', '동화'],
+    '어린이 과학동화': ['과학'], '어린이 그림책': ['동화'],
+    '어린이 인성·대화법': ['철학', '언어'], '어린이 놀이·두뇌게임': ['놀이', '집중력'],
+    '원서(영한대역)': ['원서', '챕터북'], '원서(영아 보드북)': ['원서'],
+  };
+  // 같은 작가인데 한글·영문 표기가 다른 경우
+  const AUTH_ALIAS = [
+    [/루이스\s*(새커|섀커)|louis\s+sachar/i, 'louis sachar'],
+    [/메리\s*폽\s*어즈번|mary\s+pope\s+osborne/i, 'mary pope osborne'],
+    [/케이트\s*디카밀로|kate\s+dicamillo/i, 'kate dicamillo'],
+    [/e\.?\s*b\.?\s*white|엘윈\s*브룩스\s*화이트/i, 'e b white'],
+    [/제프\s*키니|jeff\s+kinney/i, 'jeff kinney'],
+    [/아서\s*코난\s*도일|conan\s+doyle/i, 'conan doyle'],
+    [/론\s*로이|ron\s+roy/i, 'ron roy'],
+    [/조애너\s*콜|joanna\s+cole/i, 'joanna cole'],
+  ];
+  // 이유 문구에 쓸 분야 이름
+  const KDC_LABEL = {
+    '813': '한국 창작동화', '808': '한국 창작동화', '843': '영미 창작동화', '833': '일본 창작동화',
+    '408': '과학', '443': '천문·우주', '445': '지구과학', '511': '인체',
+    '911': '한국사', '909': '세계사', '001': '인문·교양', '082': '지식·교양',
+    '375': '사회·경제', '308': '사회·경제', '181': '철학·감정', '691': '예술·놀이',
+    '714': '언어', '710': '언어', '388': '언어', '747': '영어 원서',
+  };
+  function kdcLabel(k) { return KDC_LABEL[String(k || '').slice(0, 3)] || ''; }
+  const GENERIC_TAGS = ['시리즈', '동화', '한국창작동화', '영미동화', '원서', '챕터북',
+    '학습만화', '고전', '교양', '지식·교양', '인물'];
+
+  function authorKeys(a) {
+    return String(a || '')
+      .split(/[·;,/]/)
+      .map((raw) => {
+        const hit = AUTH_ALIAS.find(([re]) => re.test(raw));
+        if (hit) return hit[1];
+        return raw.replace(/\s*(지음|지은이|글|그림|옮김|저|편|감수|원작|공저|by|ill\.?)\s*/gi, ' ').trim().toLowerCase();
+      })
+      .filter((x) => x.length >= 2);
+  }
+
+  function prof(b) {
+    if (!b) return { tags: [], series: '', lang: 'ko', type: 'chapter', kdc: '', author: '', field: '' };
+    if (b.__prof) return b.__prof;
+    const hay = `${b.title || ''} ${b.author || ''}`;
+    const tags = new Set();
+    let series = b.series || '';
+    TAG_RULES.forEach(([re, tg, se]) => {
+      if (!re.test(hay)) return;
+      tg.forEach((t) => tags.add(t));
+      if (se && !series) series = se;
+    });
+    (b.tags || []).forEach((t) => tags.add(t));
+    (FIELD_TAGS[b.field] || []).forEach((t) => tags.add(t));
+    const kdc = String(b.kdc || '').replace(/[^0-9]/g, '').slice(0, 3);
+    if (/^8/.test(kdc)) tags.add('동화');
+    if (/^[45]/.test(kdc)) tags.add('과학');
+    if (/^9/.test(kdc)) tags.add('역사');
+    if (/^3/.test(kdc)) tags.add('사회');
+    if (/^0/.test(kdc)) tags.add('지식·교양');
+    if (/^7/.test(kdc)) tags.add('언어');
+    if (/^69/.test(kdc)) tags.add('예술');
+    const lang = b.lang || (/[가-힣]/.test(b.title || '') ? 'ko' : 'en');
+    const type = b.type || (/^8/.test(kdc) || !kdc ? 'chapter' : 'nonfiction');
+    const p = { tags: Array.from(tags), series, lang, type, kdc, author: b.author || '', field: b.field || '' };
+    b.__prof = p;
+    return p;
+  }
+
+  // 가장 높은 평가를 받은 책(seed)과 후보(cand)의 유사도 점수
+  function simScore(seed, cand) {
+    const a = prof(seed), b = prof(cand);
+    let score = 0;
+    const why = [];
+    if (a.kdc && b.kdc) {
+      if (a.kdc === b.kdc) score += 34;
+      else if (a.kdc.slice(0, 2) === b.kdc.slice(0, 2)) score += 22;
+      else if (a.kdc[0] === b.kdc[0]) score += 12;
+    }
+    const shared = a.tags.filter((t) => b.tags.includes(t));
+    score += Math.min(shared.length, 4) * 9;
+    const topic = shared.filter((t) => !GENERIC_TAGS.includes(t));
+    const sameSeries = !!(a.series && b.series && a.series === b.series);
+    if (sameSeries) score += 30;
+    const ak = authorKeys(a.author), bk = authorKeys(b.author);
+    const sameAuthor = !!(ak.length && bk.length && ak.some((x) => bk.includes(x) ||
+      (x.length >= 3 && bk.some((y) => y.includes(x) || x.includes(y)))));
+    if (sameAuthor) score += 22;
+    if (a.lang === b.lang) score += 7;
+    if (a.type === b.type) score += 7;
+    if (a.field && b.field && a.field === b.field) score += 8;
+    if (topic.length) why.push(topic.slice(0, 2).join('·'));
+    if (sameAuthor) why.unshift('같은 작가');
+    else if (sameSeries) why.unshift('「' + a.series + '」 시리즈');
+    if (!why.length) why.push(kdcLabel(a.kdc) || a.field || '같은 분야');
+    return { score, why };
+  }
+
+  function matchReason(it) {
+    const t = (it.seed && it.seed.title) || '';
+    const why = (it.why || []).slice();
+    const sameAuthor = why.indexOf('같은 작가') >= 0;
+    const rest = why.filter((w) => w !== '같은 작가').slice(0, 2).join('·');
+    const feel = feelLabel(it.seedLevel);
+    if (sameAuthor && !rest) return `${feel} · '${t}'${joParticle(t)} 같은 작가의 책`;
+    if (sameAuthor) return `${feel} · '${t}'${joParticle(t)} 같은 작가의 ${rest} 책`;
+    const tail = rest || kdcLabel(it.seed && it.seed.kdc) || (it.seed && it.seed.field) || '같은 분야';
+    return `${feel} · '${t}'${joParticle(t)} 비슷한 ${tail} 책`;
+  }
+
+  function bookForRecord(r) {
+    const own = ownedByKey(r.isbn);
+    const loan = loanByKey(r.isbn);
+    return bookByIsbn(r.isbn) || poolByIsbn(r.isbn) ||
+      (own ? ownedBook(own) : null) || (loan ? loanBook(loan) : null) || r;
+  }
+
+  function ratedEntries() {
+    return Object.values(state.records)
+      .filter((r) => r && r.status === 'done' && clampRating(r.stars) > 0)
+      .map((r) => ({ rec: r, book: bookForRecord(r), level: clampRating(r.stars) }))
+      .sort((x, y) => y.level - x.level ||
+        String(y.rec.finishedAt || '').localeCompare(String(x.rec.finishedAt || '')));
+  }
+
+  // 가장 높은 평가(👍 좋음 → 없으면 🙂 보통)를 기준으로 비슷한 책을 고른다.
+  function buildSimilar() {
+    const rated = ratedEntries();
+    const topLevel = rated.length ? Math.max.apply(null, rated.map((x) => x.level)) : 0;
+    const res = { items: [], catalog: {}, basis: null, level: topLevel, ratedCount: rated.length };
+    if (topLevel < 2) { state.similar = res; return; }
+    const seeds = rated.filter((x) => x.level === topLevel).slice(0, 3);
+    const doneKeys = new Set(Object.values(state.records)
+      .filter((r) => r.status === 'done').map((r) => isbnKey(r.isbn)));
+    const ownKeys = new Set(ownedBooks().map((b) => isbnKey(b.isbn)));
+    const loanKeys = new Set(loanItems().map((it) => isbnKey(it.isbn)).filter(Boolean));
+
+    const picked = [];
+    poolBooks().forEach((b) => {
+      const k = isbnKey(b.isbn);
+      if (!k || doneKeys.has(k)) return;
+      let best = null;
+      seeds.forEach((s) => {
+        const r = simScore(s.book, b);
+        if (!best || r.score > best.score) best = { score: r.score, why: r.why, seed: s };
+      });
+      if (!best || best.score < 26) return;
+      picked.push({
+        book: b, score: best.score, why: best.why, seed: best.seed.book,
+        seedLevel: best.seed.level, owned: ownKeys.has(k), loaned: loanKeys.has(k),
+      });
+    });
+    picked.sort((x, y) => y.score - x.score || (x.owned ? 1 : 0) - (y.owned ? 1 : 0) ||
+      String(x.book.title).localeCompare(String(y.book.title), 'ko'));
+    res.items = picked.slice(0, 8);
+    res.basis = {
+      title: seeds[0].book.title || seeds[0].rec.title || '',
+      level: seeds[0].level, n: seeds.length,
+    };
+
+    // 기본 추천 서가(52권)에 이미 있는 책은 카드 안에 표시만 붙인다(상위 6권).
+    const catPicked = [];
+    state.catalog.forEach((b) => {
+      const k = isbnKey(b.isbn);
+      if (!k || doneKeys.has(k)) return;
+      let best = null;
+      seeds.forEach((s) => {
+        const r = simScore(s.book, b);
+        if (!best || r.score > best.score) best = { score: r.score, why: r.why, seed: s };
+      });
+      if (best && best.score >= 26) {
+        catPicked.push({ k, best });
+      }
+    });
+    catPicked.sort((x, y) => y.best.score - x.best.score);
+    catPicked.slice(0, 6).forEach((x) => {
+      res.catalog[x.k] = {
+        score: x.best.score, why: x.best.why, seed: x.best.seed.book, seedLevel: x.best.seed.level,
+      };
+    });
+    state.similar = res;
   }
 
   async function loadPurchased(force) {
@@ -260,7 +547,7 @@
       if (b.kind) tags.push(`<span class="own-tag">${esc(b.kind)}</span>`);
       if (isDone) tags.push(`<span class="own-tag done">✓ 읽음${rec.finishedAt ? ' ' + esc(rec.finishedAt) : ''}</span>`);
       else if (isWanted) tags.push('<span class="own-tag want">읽을래요</span>');
-      if (isDone && rec.stars) tags.push(`<span class="own-tag stars">${stars(rec.stars)}</span>`);
+      if (isDone && rec.stars) tags.push(feelChip(rec.stars, 'own-tag'));
       const price = b.price ? `${b.price.toLocaleString('ko-KR')}원` + (b.qty > 1 ? ` · ${b.qty}권` : '') : '';
       return `<article class="own-card" data-ownkey="${esc(key)}">
         <div class="own-cover" data-open="${esc(key)}">${coverHTML(b.cover, b.title)}</div>
@@ -435,7 +722,7 @@
       }
       if (isDone) tags.push(`<span class="loan-tag done">✓ 읽음${rec.finishedAt ? ' ' + esc(rec.finishedAt) : ''}</span>`);
       else if (isWanted) tags.push('<span class="loan-tag want">읽을래요</span>');
-      if (isDone && rec.stars) tags.push(`<span class="loan-tag stars">${stars(rec.stars)}</span>`);
+      if (isDone && rec.stars) tags.push(feelChip(rec.stars, 'loan-tag'));
       return `<article class="loan-card" data-ref="${esc(it.ref)}">
         <div class="loan-cover" data-act="detail" data-isbn="${esc(rk)}">${coverHTML(it.cover, it.title)}</div>
         <div class="loan-body">
@@ -476,8 +763,8 @@
     loadLocal();
     $('#todayText').textContent = fmtDate(new Date());
     wireEvents();
-    buildStars($('#mStars'), (n) => { state.draftStars = n; });
-    buildStars($('#aStars'), (n) => { state.aStars = n; });
+    buildFeel($('#mStars'), (n) => { state.draftStars = n; setFeelHint('#mFeelHint', n); });
+    buildFeel($('#aStars'), (n) => { state.aStars = n; setFeelHint('#aFeelHint', n); });
 
     state.serverless = !(await probeServer());
     let cat = null;
@@ -505,6 +792,7 @@
     buildFilters();
     renderLibraryDir();
     await loadPurchased();
+    await loadPool();
     buildOwnStore();
     renderAll();
     loadAccounts();
@@ -566,7 +854,9 @@
     renderCounters();
     renderToday();
     renderRead();
+    buildSimilar();
     renderGrid();
+    renderTaste();
     renderOwned();
     renderLoans();
     $('#totalRec').textContent = state.catalog.length;
@@ -692,7 +982,10 @@
           <p class="rc-sub">${esc(r.author || book.author || '')}${r.finishedAt ? ' · ' + esc(r.finishedAt) : ''}</p>
           ${r.review ? `<p class="rc-review">${esc(r.review)}</p>` : ''}
           <div class="rc-foot">
-            <span class="stars-line">${stars(r.stars || 0)}</span>
+            <div class="feel-pick" data-rate="${esc(r.isbn)}">
+              ${FEEL_ORDER.map((n) => `<button class="mini-feel ${FEELS[n].cls} ${clampRating(r.stars) === n ? 'on' : ''}"
+                data-act="rate" data-isbn="${esc(r.isbn)}" data-val="${n}">${FEELS[n].icon} ${FEELS[n].label}</button>`).join('')}
+            </div>
             <span class="rc-btns">
               <button data-act="edit" data-isbn="${esc(r.isbn)}">수정</button>
               <button data-act="del" data-isbn="${esc(r.isbn)}">삭제</button>
@@ -730,39 +1023,106 @@
     return list;
   }
 
-  function renderGrid() {
-    const grid = $('#grid');
-    const list = sortedFiltered();
-    $('#recCount').textContent = `${list.length}권`;
-    $('#gridEmpty').hidden = list.length > 0;
-    grid.innerHTML = list.map((b) => {
-      const rec = state.records[isbnKey(b.isbn)];
-      const wanted = rec && rec.status === 'want';
-      const chips = (state.favorites.length ? state.favorites : [
-        { name: '학교 도서관' }, { name: '구의역 스마트도서관' },
-        { name: '광진정보도서관' }, { name: '자양한강도서관' },
-      ]).slice(0, 4).map((f) => {
-        const fs = state.serverless
-          ? { kind: 'unknown', label: '미확인', text: '서버를 켜면 실시간 조회돼요' }
-          : favState(b.isbn, f.name);
-        const short = f.name.replace('학교 도서관', '학교').replace(' 스마트도서관', ' 스마트')
-          .replace('도서관', '');
-        return `<button class="chip-lib ${fs.kind}" data-chip="1" data-isbn="${esc(b.isbn)}"
-          data-lib="${esc(f.name)}" title="${esc(f.name)} · ${esc(fs.text)}">
-          <i class="dot"></i>${esc(short)} ${esc(fs.kind === 'unknown' ? '' : fs.label)}
-        </button>`;
-      }).join('');
-      return `<article class="card" data-isbn="${esc(b.isbn)}">
+  function shortLibName(n) {
+    return String(n).replace(/ 스마트도서관$/, ' 스마트').replace(/ 도서관$/, '').replace(/도서관$/, '');
+  }
+
+  function cardHTML(b, taste) {
+    const k = isbnKey(b.isbn) || b.isbn;
+    const rec = state.records[k];
+    const wanted = rec && rec.status === 'want';
+    const isDone = rec && rec.status === 'done';
+    const favs = (state.favorites.length ? state.favorites : DEFAULT_FAVORITES).slice(0, 4);
+    const chips = favs.map((f) => {
+      const fs = state.serverless
+        ? { kind: 'unknown', label: '미확인', text: '서버를 켜면 실시간 조회돼요' }
+        : favState(b.isbn, f.name);
+      return `<button class="chip-lib ${fs.kind}" data-chip="1" data-isbn="${esc(b.isbn)}"
+        data-lib="${esc(f.name)}" title="${esc(f.name)} · ${esc(fs.text)}">
+        <i class="dot"></i>${esc(shortLibName(f.name))} ${esc(fs.kind === 'unknown' ? '' : fs.label)}
+      </button>`;
+    }).join('');
+    const badge = taste
+      ? '<span class="badge badge-taste">💖 취향 맞춤</span>'
+      : `<span class="badge">🏆 ${esc((b.sources || []).length)}곳 추천</span>`;
+    const reason = taste && taste.reason
+      ? `<p class="card-reason">${esc(taste.reason)}</p>` : '';
+    const flag = taste && taste.owned ? '<span class="card-flag">🛍️ 갖고 있는 책</span>'
+      : taste && taste.loaned ? '<span class="card-flag">🏛️ 대출중인 책</span>' : '';
+    return `<article class="card ${taste ? 'card-taste' : ''}" data-isbn="${esc(b.isbn)}">
         <div class="card-cover" data-open="${esc(b.isbn)}">${coverHTML(b.cover, b.title)}</div>
         <h4 class="card-title" data-open="${esc(b.isbn)}">${esc(b.title)}</h4>
-        <span class="badge">🏆 ${esc((b.sources || []).length)}곳 추천</span>
+        ${badge}
+        ${flag}
+        ${reason}
         <div class="chips-2x2">${chips}</div>
         <button class="want-btn ${wanted ? 'is-wanted' : ''}" data-act="want" data-isbn="${esc(b.isbn)}">
-          ${wanted ? '✓ 읽을래요' : '＋ 읽을래요'}
+          ${isDone ? '✓ 읽었어요' : wanted ? '✓ 읽을래요' : '＋ 읽을래요'}
         </button>
       </article>`;
-    }).join('');
+  }
+
+  function tasteItems() {
+    const s = state.similar;
+    const out = (s.items || []).map((it) => ({
+      book: it.book, taste: { reason: matchReason(it), owned: it.owned, loaned: it.loaned },
+    }));
+    // '내 별점 맞춤'으로 볼 때는 기본 추천 서가의 비슷한 책도 함께 보여 준다.
+    if (state.filter.taste) {
+      Object.keys(s.catalog || {}).forEach((k) => {
+        const b = state.catalog.find((x) => isbnKey(x.isbn) === k);
+        if (b) out.push({ book: b, taste: { reason: matchReason(s.catalog[k]) } });
+      });
+    }
+    return out;
+  }
+
+  function renderGrid() {
+    const grid = $('#grid');
+    let list;
+    if (state.filter.taste) {
+      list = tasteItems();
+      $('#recCount').textContent = `취향 맞춤 ${list.length}권`;
+    } else {
+      list = sortedFiltered();
+      $('#recCount').textContent = `${list.length}권` +
+        (state.similar.items.length ? ` + 취향 맞춤 ${state.similar.items.length}권` : '');
+    }
+    $('#gridEmpty').hidden = list.length > 0;
+    if (!list.length) {
+      $('#gridEmpty').textContent = state.filter.taste
+        ? '아직 취향 맞춤 도서가 없어요. 읽은 책에 👍 좋음을 주면 여기에 담아 드려요.'
+        : '조건에 맞는 책이 없어요.';
+    }
+    grid.innerHTML = list.map((x) => (x.book ? cardHTML(x.book, x.taste) : cardHTML(x, null))).join('');
     observeCards();
+  }
+
+  /* ---------------- render: 취향 맞춤 줄 ---------------- */
+  function renderTaste() {
+    const panel = $('#tastePanel');
+    if (!panel) return;
+    const s = state.similar;
+    const items = s.items || [];
+    const prompt = $('#tastePrompt');
+    panel.hidden = !items.length || state.filter.taste;
+    if (prompt) {
+      prompt.hidden = !!items.length || state.filter.taste;
+      if (!prompt.hidden) {
+        prompt.innerHTML = s.level === 1
+          ? '읽은 책에 <b>🙂 보통</b>이나 <b>👍 좋음</b>을 주시면 취향에 맞는 유사 도서가 추천서가에 추가됩니다.'
+          : '읽은 책에 <b>👍 좋음</b>을 주시면 취향에 맞는 유사 도서가 추천서가에 추가됩니다.';
+      }
+    }
+    if (!items.length) { const row0 = $('#tasteRow'); if (row0) row0.innerHTML = ''; return; }
+    const basis = s.basis;
+    $('#tasteCount').textContent = `${items.length}권`;
+    $('#tasteNote').textContent = basis
+      ? `${feelLabel(basis.level)}을 준 '${basis.title}'${joParticle(basis.title)} 비슷한 책을 골랐어요.`
+      : '';
+    $('#tasteRow').innerHTML = items.map((it) => cardHTML(it.book, {
+      reason: matchReason(it), owned: it.owned, loaned: it.loaned,
+    })).join('');
   }
 
   /* ---------------- 대출상태 실시간 조회 큐 ---------------- */
@@ -848,8 +1208,9 @@
     state.modalBook = book;
     state.modalFav = 'all';
     const rec = state.records[recKey(book)] || {};
-    state.draftStars = rec.stars || 0;
-    setStars($('#mStars'), state.draftStars);
+    state.draftStars = clampRating(rec.stars);
+    setFeel($('#mStars'), state.draftStars);
+    setFeelHint('#mFeelHint', state.draftStars);
 
     $('#mCover').src = book.cover || '';
     $('#mCover').alt = (book.title || '') + ' 표지';
@@ -1005,7 +1366,7 @@
       title: book.title || prev.title || '',
       author: book.author || prev.author || '',
       cover: book.cover || prev.cover || '',
-      stars: prev.stars || 0,
+      stars: clampRating(prev.stars),
       review: prev.review || '',
       finishedAt: prev.finishedAt || null,
       status: prev.status || 'want',
@@ -1017,11 +1378,28 @@
     return state.records[k];
   }
 
-  function handleAction(act, key) {
+  function handleAction(act, key, val) {
     const ownRaw = ownedByKey(key);
-    const book = bookByIsbn(key) || (ownRaw ? ownedBook(ownRaw) : null) || loanBook(loanByKey(key)) ||
+    const poolRaw = poolByIsbn(key);
+    const book = bookByIsbn(key) || (poolRaw ? enrichedPoolBook(poolRaw) : null) ||
+      (ownRaw ? ownedBook(ownRaw) : null) || loanBook(loanByKey(key)) ||
       recordOf(key) || { isbn: key };
     const rec = recordOf(key);
+    if (act === 'rate') {
+      if (!rec || rec.status !== 'done') return;
+      const n = clampRating(val);
+      const next = clampRating(rec.stars) === n ? 0 : n;   // 같은 버튼을 다시 누르면 해제
+      upsertRecord(book, { stars: next });
+      if (next === 3) {
+        const added = (state.similar.items || []).length;
+        toast(added ? `👍 좋음! 취향 맞춤 ${added}권을 추천 서가에 담았어요` : '👍 좋음으로 저장했어요');
+      } else if (next) {
+        toast(`${feelLabel(next)}으로 저장했어요`);
+      } else {
+        toast('평가를 지웠어요');
+      }
+      return;
+    }
     if (act === 'detail') {
       openModal(book, {});
       return;
@@ -1044,8 +1422,9 @@
     if (act === 'done') {
       openModal(book, {});
       state.draftStars = 0;
-      setStars($('#mStars'), 0);
-      toast('별점과 감상을 남기고 [다 읽었어요!]를 눌러 주세요');
+      setFeel($('#mStars'), 0);
+      setFeelHint('#mFeelHint', 0);
+      toast('이 책은 어땠나요? 👍 좋음 · 🙂 보통 · 😕 별로 중에 고르고 [다 읽었어요!]를 눌러 주세요');
       setTimeout(() => $('#mReview').focus(), 250);
       return;
     }
@@ -1063,19 +1442,39 @@
     }
   }
 
-  /* ---------------- 별점 ---------------- */
-  function buildStars(el, onChange) {
-    el.innerHTML = [1, 2, 3, 4, 5].map((n) => `<button class="star" data-star="${n}" aria-label="${n}점">★</button>`).join('');
+  /* ---------------- 3단계 평가 버튼 (👍 좋음 · 🙂 보통 · 😕 별로) ---------------- */
+  function buildFeel(el, onChange) {
+    if (!el) return;
+    el.innerHTML = FEEL_ORDER.map((n) => {
+      const f = FEELS[n];
+      return `<button type="button" class="feel-btn ${f.cls}" data-feel="${n}" aria-label="${f.label}">
+        <span class="fb-icon">${f.icon}</span><span class="fb-label">${f.label}</span></button>`;
+    }).join('');
     el.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-star]');
+      const b = e.target.closest('[data-feel]');
       if (!b) return;
-      const n = +b.dataset.star;
-      setStars(el, n);
+      const n = clampRating(+b.dataset.feel);
+      setFeel(el, n);
       onChange(n);
     });
   }
-  function setStars(el, n) {
-    $$('.star', el).forEach((s) => s.classList.toggle('on', +s.dataset.star <= n));
+  function setFeel(el, n) {
+    if (!el) return;
+    const v = clampRating(n);
+    el.setAttribute('data-val', String(v));
+    $$('.feel-btn', el).forEach((b) => {
+      b.classList.toggle('on', +b.dataset.feel === v);
+      b.setAttribute('aria-pressed', +b.dataset.feel === v ? 'true' : 'false');
+    });
+  }
+  function setFeelHint(sel, n) {
+    const el = $(sel);
+    if (!el) return;
+    const v = clampRating(n);
+    el.textContent = v === 3 ? '👍 좋음 — 이 책과 비슷한 책을 추천 서가에 담아 드려요.'
+      : v === 2 ? '🙂 보통 — 평가가 쌓이면 취향 맞춤 추천이 더 정확해져요.'
+      : v === 1 ? '😕 별로 — 다음엔 다른 분야 책을 보여 드릴게요.'
+      : '이 책은 어땠나요? 하나만 골라 주세요.';
   }
 
   /* ---------------- 도서관 계정 패널 ---------------- */
@@ -1153,7 +1552,8 @@
     state.addMode = 'scan';
     state.aStars = 0;
     state.draft = null;
-    setStars($('#aStars'), 0);
+    setFeel($('#aStars'), 0);
+    setFeelHint('#aFeelHint', 0);
     $('#aReview').value = '';
     $('#aDate').value = ymd(new Date());
     $('#aIsbn').value = prefillIsbn || '';
@@ -1316,7 +1716,7 @@
     const k = isbnKey(book.isbn);
     state.records[k] = {
       isbn: book.isbn, title: book.title, author: book.author, cover: book.cover,
-      status: 'done', stars: state.aStars, review: ($('#aReview').value || '').trim(),
+      status: 'done', stars: clampRating(state.aStars), review: ($('#aReview').value || '').trim(),
       finishedAt: date, updatedAt: new Date().toISOString(),
     };
     saveRecords();
@@ -1354,6 +1754,7 @@
         const count = Object.keys(recs).length;
         if (!confirm(`기록 ${count}건을 불러올까요? 지금 기록 ${Object.keys(state.records).length}건을 덮어씁니다.`)) return;
         state.records = recs;
+        normalizeRatings();
         if (data.status && typeof data.status === 'object') state.status = data.status;
         saveRecords();
         localStorage.setItem(LS_STATUS, JSON.stringify(state.status));
@@ -1434,6 +1835,22 @@
     });
     $('#sortBy').addEventListener('change', (e) => { state.sort = e.target.value; renderGrid(); });
 
+    // 취향 맞춤 보기
+    const tasteBtn = $('#tasteFilterBtn');
+    if (tasteBtn) tasteBtn.addEventListener('click', () => {
+      state.filter.taste = !state.filter.taste;
+      state.filter.q = '';
+      const q = $('#searchInput');
+      if (q) q.value = '';
+      tasteBtn.classList.toggle('is-on', state.filter.taste);
+      tasteBtn.setAttribute('aria-pressed', state.filter.taste ? 'true' : 'false');
+      renderGrid();
+      renderTaste();
+      if (state.filter.taste) observeCards();
+    });
+    const goShelf = $('#goShelfBtn');
+    if (goShelf) goShelf.addEventListener('click', () => { const t = $$('.tab')[0]; if (t) t.click(); });
+
     // 구매도서 탭
     const ownSearch = $('#ownSearch');
     if (ownSearch) ownSearch.addEventListener('input', (e) => { state.own.q = e.target.value; renderOwned(); });
@@ -1473,6 +1890,10 @@
         e.stopPropagation();
         const book = bookByIsbn(chip.dataset.isbn);
         if (book) openModal(book);
+        else {
+          const poolRaw = poolByIsbn(chip.dataset.isbn);
+          if (poolRaw) openModal(enrichedPoolBook(poolRaw));
+        }
         return;
       }
       const openEl = e.target.closest('[data-open]');
@@ -1480,6 +1901,8 @@
         const k = openEl.dataset.open;
         const book = bookByIsbn(k);
         if (book) { openModal(book); return; }
+        const poolRaw = poolByIsbn(k);
+        if (poolRaw) { openModal(enrichedPoolBook(poolRaw)); return; }
         const ownRaw = ownedByKey(k);
         if (ownRaw) { openModal(ownedBook(ownRaw)); return; }
         const loanRaw = loanByKey(k);
@@ -1489,7 +1912,7 @@
       const actEl = e.target.closest('[data-act]');
       if (actEl) {
         e.stopPropagation();
-        handleAction(actEl.dataset.act, actEl.dataset.isbn);
+        handleAction(actEl.dataset.act, actEl.dataset.isbn, actEl.dataset.val);
         return;
       }
       const favTab = e.target.closest('[data-fav]');
@@ -1528,14 +1951,20 @@
       const b = state.modalBook;
       if (!b) return;
       const review = $('#mReview').value.trim();
+      const stars = clampRating(state.draftStars);
       upsertRecord(b, {
         status: 'done',
-        stars: state.draftStars,
+        stars,
         review,
         finishedAt: (recordOf(b.isbn) && recordOf(b.isbn).finishedAt) || ymd(new Date()),
       });
       closeModal();
-      toast('서재에 꽂았어요 📖');
+      if (stars === 3) {
+        const added = (state.similar.items || []).length;
+        toast(added ? `👍 좋음! 이 책과 비슷한 ${added}권을 추천 서가에 담았어요` : '서재에 꽂았어요 📖');
+      } else {
+        toast('서재에 꽂았어요 📖');
+      }
     });
 
     $('#mDelete').addEventListener('click', () => {
@@ -1554,10 +1983,11 @@
       const rec = recordOf(b.isbn);
       if (!rec) return;
       $('#mReview').value = rec.review || '';
-      state.draftStars = rec.stars || 0;
-      setStars($('#mStars'), state.draftStars);
+      state.draftStars = clampRating(rec.stars);
+      setFeel($('#mStars'), state.draftStars);
+      setFeelHint('#mFeelHint', state.draftStars);
       $('#mReview').focus();
-      toast('별점·감상을 고친 뒤 [다 읽었어요!]를 눌러 주세요');
+      toast('평가·감상을 고친 뒤 [다 읽었어요!]를 눌러 주세요');
     });
 
     $('#addRecordBtn').addEventListener('click', () => openAdd());
