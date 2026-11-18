@@ -852,3 +852,26 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
   .tab .tl-full { display: none; }
   .tab .tl-short { display: inline; }
 }
+
+/* ---------- 대출도서 2026 이력 · 필터 알약 ---------- */
+.loan-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.loan-pills-acct { margin-top: 6px; }
+.loan-pills .pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid #efe7f4; background: rgba(255, 255, 255, .92); color: #7b6f84;
+  border-radius: 999px; padding: 7px 11px; font-size: 11.5px; font-weight: 800;
+  font-family: inherit; cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+}
+.loan-pills .pill:active { transform: scale(.96); }
+.loan-pills .pill b { font-size: 11.5px; color: #a294ac; font-weight: 800; }
+.loan-pills .pill.on { background: linear-gradient(135deg, #f6a3c0, #e77aa2); border-color: transparent; color: #fff; }
+.loan-pills .pill.on b { color: rgba(255, 255, 255, .85); }
+.loan-pills-acct .pill.on { background: linear-gradient(135deg, #b6a0e6, #8f76cf); }
+.loan-filters { grid-template-columns: 1fr; margin-top: 8px; }
+.loan-kind.hist { background: var(--green-soft); color: #1f7a51; }
+.loan-tag.date { background: #eef4fb; color: #4a6f9c; }
+.loan-stat.hist { background: var(--green-soft); border-color: #d8efe2; color: #1f7a51; }
+.loan-card.is-history { background: rgba(255, 255, 255, .88); }
+.loan-feel { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.loan-card.is-history .loan-actions { align-items: center; }

@@ -34,7 +34,7 @@
     own: { q: '', store: '' },
     ownSort: 'recent',
     accounts: null,      // 도서관 계정 대출·예약 (data/accounts_status.json)
-    loan: { status: '', acct: '', sort: 'due' },
+    loan: { status: 'active', acct: '', sort: 'due' },
     pool: null,          // 취향 맞춤 후보 풀 (data/similar_pool.json)
     similar: { items: [], catalog: {}, basis: null, level: 0, ratedCount: 0 },
   };
@@ -441,7 +441,7 @@
     });
     const isDoneTitle = (t) => doneTitles.some((d) => sameTitle(d, t));
     const ownKeys = new Set(ownedBooks().map((b) => isbnKey(b.isbn)));
-    const loanKeys = new Set(loanItems().map((it) => isbnKey(it.isbn)).filter(Boolean));
+    const loanKeys = new Set(activeLoanItems().map((it) => isbnKey(it.isbn)).filter(Boolean));
 
     const picked = [];
     poolBooks().forEach((b) => {
@@ -614,7 +614,8 @@
   }
 
   /* ---------------- 대출도서 (도서관 계정 대출·예약) ---------------- */
-  function loanItems() {
+  // 지금 대출중·예약중인 책
+  function activeLoanItems() {
     const out = [];
     ((state.accounts && state.accounts.libraries) || []).forEach((lib) => {
       const base = {
@@ -626,6 +627,28 @@
     });
     return out;
   }
+
+  // 2026년에 빌렸다가 반납한 책 (accounts_status.json → loanHistory2026)
+  function historyItems() {
+    const out = [];
+    ((state.accounts && state.accounts.loanHistory2026) || []).forEach((h, i) => {
+      const acct = h.acct || '';
+      const lib = ((state.accounts && state.accounts.libraries) || [])
+        .find((l) => (l.key || '') === acct) || {};
+      out.push(Object.assign({}, h, {
+        kind: 'history', ref: acct + ':H' + i,
+        libKey: acct, libLabel: lib.label || '',
+        libName: lib.name || '광진구립도서관',
+        login: h.acctLabel || lib.login || '', member: lib.member || '',
+      }));
+    });
+    return out;
+  }
+
+  // 화면에 놓는 전체 목록(대출·예약 먼저, 그다음 반납 이력)
+  function loanItems() { return activeLoanItems().concat(historyItems()); }
+
+  function dotDate(s) { return String(s || '').replace(/-/g, '.'); }
 
   function loanDueOf(it) { return it.kind === 'reserve' ? (it.until || '') : (it.dueAt || ''); }
   function loanRecKey(it) { return it.isbn ? isbnKey(it.isbn) : 'loan-' + it.ref; }
@@ -639,17 +662,22 @@
     if (!it) return null;
     const kindTxt = it.kind === 'reserve'
       ? `예약 ${it.reservedAt || ''}`.trim() + (it.queue ? ` · 순위 ${it.queue}` : '')
-      : `대출 ${it.loanedAt || ''}`.trim();
+      : it.kind === 'history'
+        ? [`대출 ${it.loanedAt || ''}`.trim(), `반납 ${it.returnedAt || ''}`.trim()].filter(Boolean).join(' ~ ')
+        : `대출 ${it.loanedAt || ''}`.trim();
     const tail = it.kind === 'reserve'
       ? (it.until ? `수령기한 ~${it.until}` : '')
-      : [(it.dueAt ? `반납 ${it.dueAt}` : ''), (it.pickup ? `수령 ${it.pickup}` : '')].filter(Boolean).join(' · ');
-    const note = [it.library || '', kindTxt, tail, it.status || ''].filter(Boolean).join(' · ');
+      : it.kind === 'history'
+        ? (it.status || '')
+        : [(it.dueAt ? `반납 ${it.dueAt}` : ''), (it.pickup ? `수령 ${it.pickup}` : '')].filter(Boolean).join(' · ');
+    const note = [it.library || '', kindTxt, tail].filter(Boolean).join(' · ');
     return {
       isbn: it.isbn || ('loan-' + it.ref), key: loanRecKey(it),
       title: it.title, author: it.author || '', publisher: it.publisher || '',
       year: it.year || '', cover: it.cover || '', kdc: it.kdc || '',
-      field: it.kind === 'reserve' ? '예약도서' : '대출도서',
+      field: it.kind === 'history' ? (it.field || '문학') : it.kind === 'reserve' ? '예약도서' : '대출도서',
       loaned: true, loanKind: it.kind,
+      finishedAt: it.kind === 'history' ? (it.returnedAt || '') : '',
       sources: [{ name: it.libName || '도서관', note }],
       reason: '',
     };
@@ -676,8 +704,15 @@
   }
 
   function loanFiltered() {
-    let list = loanItems();
-    if (state.loan.status) list = list.filter((x) => x.kind === state.loan.status);
+    const active = activeLoanItems();
+    const hist = historyItems();
+    const st = state.loan.status || '';
+    let list;
+    if (st === 'active') list = active.slice();
+    else if (st === 'history') list = hist.slice();
+    else if (st === 'loan') list = active.filter((x) => x.kind === 'loan');
+    else if (st === 'reserve') list = active.filter((x) => x.kind === 'reserve');
+    else list = active.concat(hist);
     if (state.loan.acct) list = list.filter((x) => x.libKey === state.loan.acct);
     list = list.slice();
     if (state.loan.sort === 'title') {
@@ -685,66 +720,28 @@
     } else if (state.loan.sort === 'loaned') {
       list.sort((a, b) => String(b.loanedAt || b.reservedAt || '').localeCompare(String(a.loanedAt || a.reservedAt || '')));
     } else {
-      list.sort((a, b) => String(loanDueOf(a) || '9999-99-99').localeCompare(String(loanDueOf(b) || '9999-99-99')));
+      // 반납일순: 대출·예약은 반납·수령기한 순, 이력은 대출일 최신순으로 뒤에 붙인다.
+      const rank = (x) => (x.kind === 'history' ? 1 : 0);
+      list.sort((a, b) => rank(a) - rank(b) ||
+        (rank(a) === 0
+          ? String(loanDueOf(a) || '9999-99-99').localeCompare(String(loanDueOf(b) || '9999-99-99'))
+          : String(b.loanedAt || '').localeCompare(String(a.loanedAt || ''))));
     }
     return list;
   }
 
-  function renderLoans() {
-    const box = $('#loanList');
-    if (!box) return;
-    const acc = state.accounts;
-    const all = loanItems();
-    const badge = $('#loanTabCount');
-    if (badge) badge.textContent = all.length ? String(all.length) : '0';
-    $('#loanCount').textContent = `${all.length}권`;
-
-    // 계정 필터 (책이 있는 계정만)
-    const sel = $('#loanAcct');
-    if (sel) {
-      const accts = [];
-      all.forEach((x) => {
-        if (!accts.some((a) => a.key === x.libKey)) {
-          accts.push({ key: x.libKey, name: x.login || x.libLabel || x.libName || '도서관' });
-        }
-      });
-      sel.innerHTML = '<option value="">계정 전체</option>' +
-        accts.map((a) => `<option value="${esc(a.key)}">${esc(a.name)}</option>`).join('');
-      sel.value = state.loan.acct || '';
-    }
-
-    if (acc) {
-      $('#loanSource').textContent = (acc.updatedAt ? `${acc.updatedAt} 확인 기준 · ` : '') +
-        '광진구립도서관 계정의 대출·예약 현황이에요. [새로고침]을 누르거나 Pickle에 요청하면 확인해 반영해 드려요.';
+  function loanCardHTML(it) {
+    const rk = loanRecKey(it);
+    const rec = state.records[rk];
+    const isWanted = rec && rec.status === 'want';
+    const isDone = rec && rec.status === 'done';
+    const stars = isDone ? clampRating(rec.stars) : 0;
+    const acct = it.login || it.libLabel || '';
+    const tags = [];
+    if (it.kind === 'history') {
+      if (it.status) tags.push(`<span class="loan-tag">${esc(it.status)}</span>`);
+      if (isDone) tags.push('<span class="loan-tag done">✓ 읽음</span>');
     } else {
-      $('#loanSource').textContent = '대출·예약 현황을 아직 불러오지 못했어요. [새로고침]을 눌러 주세요.';
-    }
-
-    const loanN = all.filter((x) => x.kind === 'loan').length;
-    const resN = all.filter((x) => x.kind === 'reserve').length;
-    const soon = all.filter((x) => x.kind === 'loan')
-      .map((x) => daysLeft(x.dueAt)).filter((n) => n != null && n <= 3).length;
-    const notices = ((acc && acc.libraries) || [])
-      .filter((l) => l.notice && l.noticeLevel === 'warn')
-      .map((l) => `<span class="loan-stat warn">⚠️ ${esc((l.login || l.label) + ' · ' + l.notice)}</span>`).join('');
-    $('#loanSummary').innerHTML =
-      `<span class="loan-stat">📕 대출중 <b>${loanN}</b>권</span>` +
-      `<span class="loan-stat">🔖 예약 <b>${resN}</b>권</span>` +
-      (soon ? `<span class="loan-stat warn">⏰ 반납 임박 <b>${soon}</b>권</span>` : '') + notices;
-
-    const list = loanFiltered();
-    $('#loanEmpty').hidden = list.length > 0;
-    if (!list.length) {
-      $('#loanEmpty').textContent = !acc ? '대출·예약 현황을 불러오지 못했어요.'
-        : (all.length ? '조건에 맞는 대출·예약 도서가 없어요.' : '지금 대출·예약 중인 책이 없어요.');
-    }
-
-    box.innerHTML = list.map((it) => {
-      const rk = loanRecKey(it);
-      const rec = state.records[rk];
-      const isWanted = rec && rec.status === 'want';
-      const isDone = rec && rec.status === 'done';
-      const tags = [];
       if (it.pickup) tags.push(`<span class="loan-tag">📦 수령 ${esc(it.pickup)}</span>`);
       if (it.kind === 'loan' && it.status) tags.push(`<span class="loan-tag">${esc(it.status)}</span>`);
       if (it.kind === 'reserve') {
@@ -753,26 +750,106 @@
       }
       if (isDone) tags.push(`<span class="loan-tag done">✓ 읽음${rec.finishedAt ? ' ' + esc(rec.finishedAt) : ''}</span>`);
       else if (isWanted) tags.push('<span class="loan-tag want">읽을래요</span>');
-      if (isDone && rec.stars) tags.push(feelChip(rec.stars, 'loan-tag'));
-      return `<article class="loan-card" data-ref="${esc(it.ref)}">
+      if (isDone && stars) tags.push(feelChip(stars, 'loan-tag'));
+    }
+    const kindChip = it.kind === 'history'
+      ? '<span class="loan-kind hist">📗 반납완료</span>'
+      : it.kind === 'reserve'
+        ? '<span class="loan-kind resv">🔖 예약중</span>'
+        : '<span class="loan-kind loan">📕 대출중</span>';
+    const dateChip = it.kind === 'history'
+      ? `<span class="loan-tag date">🗓️ ${esc(dotDate(it.loanedAt))} → ${esc(dotDate(it.returnedAt))}</span>`
+      : loanDueTag(it);
+    const feel = `<div class="loan-feel">${FEEL_ORDER.map((n) => `<button class="mini-feel ${FEELS[n].cls} ${stars === n ? 'on' : ''}" data-act="rate" data-isbn="${esc(rk)}" data-val="${n}">${FEELS[n].icon} ${FEELS[n].label}</button>`).join('')}</div>`;
+    const actions = it.kind === 'history'
+      ? `<div class="loan-actions">${feel}<button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button></div>`
+      : `<div class="loan-actions">
+            <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(rk)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
+            <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(rk)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
+            <button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button>
+          </div>`;
+    return `<article class="loan-card${it.kind === 'history' ? ' is-history' : ''}" data-ref="${esc(it.ref)}">
         <div class="loan-cover" data-act="detail" data-isbn="${esc(rk)}">${coverHTML(it.cover, it.title)}</div>
         <div class="loan-body">
           <div class="loan-top">
-            <span class="loan-kind ${it.kind === 'reserve' ? 'resv' : 'loan'}">${it.kind === 'reserve' ? '🔖 예약중' : '📕 대출중'}</span>
-            <span class="acct-badge">${esc(it.login || it.libLabel || '')}</span>
-            ${loanDueTag(it)}
+            ${kindChip}
+            <span class="acct-badge">${esc(acct)}</span>
+            ${dateChip}
           </div>
           <p class="loan-title" data-act="detail" data-isbn="${esc(rk)}">${esc(it.title)}</p>
           <p class="loan-sub">${esc([it.author, it.publisher, it.year].filter(Boolean).join(' · '))}</p>
           <div class="loan-meta"><span class="loan-tag">🏛️ ${esc(it.library || '')}</span>${tags.join('')}</div>
-          <div class="loan-actions">
-            <button class="own-btn ${isDone || isWanted ? 'is-on' : ''}" data-act="want" data-isbn="${esc(rk)}">${isDone ? '✓ 읽음' : isWanted ? '✓ 읽을래요' : '＋ 읽을래요'}</button>
-            <button class="own-btn ${isDone ? 'is-done' : ''}" data-act="done" data-isbn="${esc(rk)}">${isDone ? '✓ 다 읽었어요' : '다 읽었어요'}</button>
-            <button class="own-btn" data-act="detail" data-isbn="${esc(rk)}">상세 · 한줄감상</button>
-          </div>
+          ${actions}
         </div>
       </article>`;
-    }).join('');
+  }
+
+  function renderLoans() {
+    const box = $('#loanList');
+    if (!box) return;
+    const acc = state.accounts;
+    const active = activeLoanItems();
+    const hist = historyItems();
+    const all = active.concat(hist);
+
+    const badge = $('#loanTabCount');
+    if (badge) badge.textContent = active.length ? String(active.length) : '0';
+    const st = state.loan.status || '';
+    $('#loanCount').textContent = st === 'history'
+      ? `2026년 반납 ${hist.length}권`
+      : (st === 'active' || st === 'loan' || st === 'reserve')
+        ? `대출·예약 ${active.length}권`
+        : `전체 ${all.length}권`;
+
+    // 필터 알약 상태·숫자
+    $$('#loanStatusPills .pill').forEach((el) => {
+      const v = el.getAttribute('data-loan-status') || '';
+      el.classList.toggle('on', st === v);
+      const c = el.querySelector('b');
+      if (c) c.textContent = String(v === 'active' ? active.length : v === 'history' ? hist.length : all.length);
+    });
+    const acctTotals = {};
+    all.forEach((x) => { acctTotals[x.libKey] = (acctTotals[x.libKey] || 0) + 1; });
+    $$('#loanAcctPills .pill').forEach((el) => {
+      const v = el.getAttribute('data-loan-acct') || '';
+      el.classList.toggle('on', (state.loan.acct || '') === v);
+      const c = el.querySelector('b');
+      if (c) c.textContent = v ? String(acctTotals[v] || 0) : String(all.length);
+    });
+
+    if (acc) {
+      const range = acc.historyRange
+        ? ` · ${dotDate(acc.historyRange.from)}~${dotDate(acc.historyRange.to)} 반납 ${hist.length}권 포함`
+        : '';
+      $('#loanSource').textContent = (acc.updatedAt ? `${acc.updatedAt} 확인 기준 · ` : '') +
+        `광진구립도서관 계정의 대출·예약 현황${range}이에요. [새로고침]을 누르거나 Pickle에 요청하면 확인해 반영해 드려요.`;
+    } else {
+      $('#loanSource').textContent = '대출·예약 현황을 아직 불러오지 못했어요. [새로고침]을 눌러 주세요.';
+    }
+
+    const loanN = active.filter((x) => x.kind === 'loan').length;
+    const resN = active.filter((x) => x.kind === 'reserve').length;
+    const soon = active.filter((x) => x.kind === 'loan')
+      .map((x) => daysLeft(x.dueAt)).filter((n) => n != null && n <= 3).length;
+    const notices = ((acc && acc.libraries) || [])
+      .filter((l) => l.notice && l.noticeLevel === 'warn')
+      .map((l) => `<span class="loan-stat warn">⚠️ ${esc((l.login || l.label) + ' · ' + l.notice)}</span>`).join('');
+    $('#loanSummary').innerHTML =
+      `<span class="loan-stat">📕 대출중 <b>${loanN}</b>권</span>` +
+      `<span class="loan-stat">🔖 예약 <b>${resN}</b>권</span>` +
+      (soon ? `<span class="loan-stat warn">⏰ 반납 임박 <b>${soon}</b>권</span>` : '') +
+      (hist.length ? `<span class="loan-stat hist">📗 2026년 반납 <b>${hist.length}</b>권</span>` : '') +
+      notices;
+
+    const list = loanFiltered();
+    $('#loanEmpty').hidden = list.length > 0;
+    if (!list.length) {
+      $('#loanEmpty').textContent = !acc ? '대출·예약 현황을 불러오지 못했어요.'
+        : st === 'history' ? '2026년에 반납한 책이 없어요.'
+        : (all.length ? '조건에 맞는 대출·예약 도서가 없어요.' : '지금 대출·예약 중인 책이 없어요.');
+    }
+
+    box.innerHTML = list.map(loanCardHTML).join('');
   }
 
   async function loadLoanData(force) {
@@ -1417,7 +1494,19 @@
       recordOf(key) || { isbn: key };
     const rec = recordOf(key);
     if (act === 'rate') {
-      if (!rec || rec.status !== 'done') return;
+      if (!rec || rec.status !== 'done') {
+        // 반납완료한 대출이력 책: 누르는 즉시 '다 읽었어요'와 평가를 함께 기록한다.
+        const n0 = clampRating(val);
+        if (!n0) return;
+        upsertRecord(book, { status: 'done', stars: n0, finishedAt: book.finishedAt || ymd(new Date()) });
+        if (n0 === 3) {
+          const added0 = (state.similar.items || []).length;
+          toast(added0 ? `👍 좋음! 취향 맞춤 ${added0}권을 추천 서가에 담았어요` : '👍 좋음으로 저장했어요');
+        } else {
+          toast(`${feelLabel(n0)}으로 저장했어요`);
+        }
+        return;
+      }
       const n = clampRating(val);
       const next = clampRating(rec.stars) === n ? 0 : n;   // 같은 버튼을 다시 누르면 해제
       upsertRecord(book, { stars: next });
@@ -1900,10 +1989,21 @@
     });
 
     // 대출도서 탭
-    const loanStatus = $('#loanStatus');
-    if (loanStatus) loanStatus.addEventListener('change', (e) => { state.loan.status = e.target.value; renderLoans(); });
-    const loanAcct = $('#loanAcct');
-    if (loanAcct) loanAcct.addEventListener('change', (e) => { state.loan.acct = e.target.value; renderLoans(); });
+    const loanStatusPills = $('#loanStatusPills');
+    if (loanStatusPills) loanStatusPills.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-loan-status]');
+      if (!b) return;
+      state.loan.status = b.getAttribute('data-loan-status') || '';
+      renderLoans();
+    });
+    const loanAcctPills = $('#loanAcctPills');
+    if (loanAcctPills) loanAcctPills.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-loan-acct]');
+      if (!b) return;
+      const v = b.getAttribute('data-loan-acct') || '';
+      state.loan.acct = state.loan.acct === v ? '' : v;
+      renderLoans();
+    });
     const loanSort = $('#loanSort');
     if (loanSort) loanSort.addEventListener('change', (e) => { state.loan.sort = e.target.value; renderLoans(); });
     const loanRefresh = $('#loanRefreshBtn');
