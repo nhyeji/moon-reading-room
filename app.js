@@ -480,7 +480,7 @@
     markCardChecking(k);
     try {
       const r = await getJSON('/api/holdings?' + params.toString());
-      state.status[k] = { gb: r.gyeongbok, gj: r.gwangjin, at: Date.now() };
+      state.status[k] = { gb: r.school, gj: r.gwangjin, at: Date.now() };
       saveStatus();
       renderGrid();
       renderToday();
