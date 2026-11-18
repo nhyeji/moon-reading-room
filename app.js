@@ -14,8 +14,8 @@
   /* ---------------- 서울시 구립도서관 (서울온) ----------------
    * 서울온(서울시 통합 앱, 옛 서울시민카드+서울지갑) 시설간편가입:
    * 서울 거주 확인만으로 도서관 방문 없이 모바일 대출회원증을 즉시 발급받는 서비스.
-   * on: 'ok'    = 도서관 홈페이지에 ‘서울온 시설간편가입’ 안내가 확인됨
-   *     'check' = 그 안내를 확인하지 못함(도서관 방문 발급 기준일 수 있음)
+   * 서울온 시설간편가입 안내가 확인된 14개 구만 모은다. 안내를 확인하지 못한 구와
+   * 서울온이 아닌 서울도서관은 목록에 넣지 않는다.
    * search: 제목을 붙여 바로 열 수 있는 검색 주소(GET으로 동작 확인된 곳만)
    * ebook:  도서관 전자도서관(전자책) 안내 주소
    */
@@ -23,11 +23,6 @@
     { gu: '종로구', name: '종로구립도서관', site: 'https://lib.jongno.go.kr', on: 'ok', scope: '17개관',
       guide: 'https://lib.jongno.go.kr/menu/subpage/subpage_01/sub03.php',
       ebook: 'https://lib.jongno.go.kr/menu/subpage/subpage_05/sub08.php' },
-    { gu: '중구', name: '중구구립도서관', site: 'https://www.junggulib.or.kr/SJGL/index.do', on: 'check', scope: '가온·손기정 등',
-      ebook: 'https://www.junggulib.or.kr/SJGL/menu/10024/contents/40001/contents.do' },
-    { gu: '용산구', name: '용산구립도서관', site: 'https://www.yslibrary.or.kr', on: 'check' },
-    { gu: '성동구', name: '성동구립도서관', site: 'https://www.sdlib.or.kr', on: 'check',
-      note: '회원가입 안내는 도서관 방문 발급 기준' },
     { gu: '광진구', name: '광진구립도서관', site: 'https://www.gwangjinlib.seoul.kr', on: 'ok', scope: '8개관+스마트 6곳',
       guide: 'https://www.gwangjinlib.seoul.kr/gjinfo/menu/10056/contents/40012/contents.do',
       search: 'https://gwangjinlib.seoul.kr/gjinfo/plusSearchResultList.do?searchType=SIMPLE&searchLibrary=ALL&searchKey=TITLE&searchKeyword=',
@@ -38,9 +33,6 @@
     { gu: '중랑구', name: '중랑구립도서관', site: 'https://www.jungnanglib.seoul.kr', on: 'ok',
       guide: 'https://www.jungnanglib.seoul.kr/intro/program/memberJoinIntro.do',
       ebook: 'https://www.jungnanglib.seoul.kr/intro/menu/10010/contents/40001/contents.do' },
-    { gu: '성북구', name: '성북구립도서관', site: 'https://www.sblib.seoul.kr', on: 'check' },
-    { gu: '강북구', name: '강북구립도서관', site: 'https://www.gblib.or.kr/gangbuk/', on: 'check',
-      ebook: 'https://ebook.gblib.or.kr/' },
     { gu: '도봉구', name: '도봉구통합도서관', site: 'https://www.unilib.dobong.kr', on: 'ok',
       guide: 'https://www.unilib.dobong.kr/contents.do?idx=306' },
     { gu: '노원구', name: '노원구립도서관', site: 'https://www.nowonlib.kr', on: 'ok',
@@ -59,29 +51,15 @@
       guide: 'https://lib.yangcheon.or.kr/yclib/contents.do?idx=4067' },
     { gu: '강서구', name: '강서구립도서관', site: 'https://lib.gangseo.seoul.kr', on: 'ok', scope: '이용안내 › 서울온 간편가입',
       note: '누리집 이용안내에 ‘서울온 간편가입’ 메뉴가 있음' },
-    { gu: '구로구', name: '구로구립도서관', site: 'https://lib.guro.go.kr', on: 'check' },
-    { gu: '금천구', name: '금천구립도서관', site: 'https://geumcheonlib.seoul.kr', on: 'check', scope: '독산·가산·금나래·시흥' },
-    { gu: '영등포구', name: '영등포구립도서관', site: 'https://www.ydplib.or.kr', on: 'check', scope: '8개관' },
-    { gu: '동작구', name: '동작구립도서관', site: 'https://lib.dongjak.go.kr', on: 'check',
-      ebook: 'https://lib.dongjak.go.kr/dj/html.do?menu_idx=15' },
-    { gu: '관악구', name: '관악구립도서관', site: 'https://lib.gwanak.go.kr', on: 'check' },
     { gu: '서초구', name: '서초구립도서관', site: 'https://public.seocholib.or.kr', on: 'ok', scope: '8개관',
       note: '회원가입 안내 › 방법 3. 서울온 앱 이용' },
     { gu: '강남구', name: '강남구통합도서관', site: 'https://library.gangnam.go.kr', on: 'ok', scope: '15개관',
       guide: 'https://library.gangnam.go.kr/intro/menu/10042/contents/40009/contents.do',
       ebook: 'https://library.gangnam.go.kr/intro/menu/10033/contents/40130/contents.do' },
-    { gu: '송파구', name: '송파구통합도서관', site: 'https://www.splib.or.kr', on: 'check', scope: '스마트도서관 5곳' },
     { gu: '강동구', name: '강동구립도서관', site: 'https://www.gdlibrary.or.kr', on: 'ok',
       guide: 'https://www.gdlibrary.or.kr/portal/menu/54/signup-gd',
       ebook: 'https://www.gdlibrary.or.kr/portal/menu/20/elec-lib' },
   ];
-
-  // 서울도서관 — 서울온 앱이 아니라 ‘비대면 자격확인’으로 온라인 회원증을 발급한다.
-  const SEOUL_LIBRARY = {
-    name: '서울도서관', site: 'https://lib.seoul.go.kr', on: 'check',
-    note: '서울온 앱 대신 누리집 비대면 자격확인으로 온라인 회원증 발급',
-    guide: 'https://lib.seoul.go.kr/rwww/html/ko/membership.jsp',
-  };
 
   // 전자책(전자도서관) — 소장형은 교보문고 전자도서관, 구독형은 부커스.
   const EBOOK_PORTALS = [
@@ -1291,9 +1269,6 @@
           ${r.review ? `<p class="rc-review">${esc(r.review)}</p>` : ''}
           <div class="rc-foot">
             ${miniFeelRow(r.isbn, r.stars, 'feel-pick')}
-            <span class="rc-btns">
-              <button data-act="edit" data-isbn="${esc(r.isbn)}">수정</button>
-            </span>
           </div>
         </div>
       </div>`;
@@ -2206,9 +2181,7 @@
   }
 
   function libCardHTML(lib, q) {
-    const badge = lib.on === 'ok'
-      ? '<span class="lib-badge ok">서울온 가입 가능</span>'
-      : '<span class="lib-badge check">가입 안내 확인 필요</span>';
+    const badge = '<span class="lib-badge ok">서울온 가입 가능</span>';
     const meta = [lib.gu, lib.scope].filter(Boolean).join(' · ');
     const links = [];
     if (q) {
@@ -2221,7 +2194,7 @@
     }
     if (lib.guide) links.push(`<a class="lib-link" href="${esc(lib.guide)}" target="_blank" rel="noopener">🌐 서울온 가입 안내</a>`);
     if (lib.ebook) links.push(`<a class="lib-link" href="${esc(lib.ebook)}" target="_blank" rel="noopener">📱 전자책</a>`);
-    return `<article class="lib-card ${lib.on === 'ok' ? 'is-ok' : ''}">
+    return `<article class="lib-card is-ok">
       <div class="lib-card-top"><b>${esc(lib.name)}</b>${badge}</div>
       <p class="lib-meta">${esc(meta)}</p>
       ${lib.note ? `<p class="lib-note">${esc(lib.note)}</p>` : ''}
@@ -2233,13 +2206,10 @@
     const q = libQueryText();
     const grid = $('#seoulLibGrid');
     if (!grid) return;
-    const okList = SEOUL_ON_LIBS.filter((l) => l.on === 'ok');
-    const checkList = SEOUL_ON_LIBS.filter((l) => l.on !== 'ok');
+    const okList = SEOUL_ON_LIBS;
     const cnt = $('#seoulLibCount');
-    if (cnt) cnt.textContent = `서울온 확인 ${okList.length}곳 · 확인 필요 ${checkList.length}곳`;
-    grid.innerHTML = okList.map((l) => libCardHTML(l, q)).join('') +
-      checkList.map((l) => libCardHTML(l, q)).join('') +
-      libCardHTML(SEOUL_LIBRARY, q);
+    if (cnt) cnt.textContent = `서울온 가입 ${okList.length}곳`;
+    grid.innerHTML = okList.map((l) => libCardHTML(l, q)).join('');
 
     // 단골 도서관
     const fav = $('#favLibGrid');
@@ -2283,13 +2253,9 @@
     const book = state.modalBook;
     if (!box || !book) return;
     const q = book.title || '';
-    const okList = SEOUL_ON_LIBS.filter((l) => l.on === 'ok');
-    const chips = okList.map((l) => `<a class="lib-chip" href="${esc(libTarget(l, q))}" target="_blank" rel="noopener" title="${esc(l.name)}">${esc(l.gu)}</a>`).join('');
-    const rest = SEOUL_ON_LIBS.filter((l) => l.on !== 'ok').map((l) => `<a class="lib-chip dim" href="${esc(libTarget(l, q))}" target="_blank" rel="noopener">${esc(l.gu)}</a>`).join('');
+    const chips = SEOUL_ON_LIBS.map((l) => `<a class="lib-chip" href="${esc(libTarget(l, q))}" target="_blank" rel="noopener" title="${esc(l.name)}">${esc(l.gu)}</a>`).join('');
     box.innerHTML = `<p class="hold-note">서울온 앱 시설카드로 가입한 구립도서관에서 “${esc(q)}” 소장 여부를 찾아봅니다.</p>
-      <div class="lib-chips">${chips}</div>
-      <p class="hold-note">가입 안내를 확인하지 못한 곳 — 해당 구 홈페이지에서 직접 검색</p>
-      <div class="lib-chips">${rest}<a class="lib-chip dim" href="${esc(SEOUL_LIBRARY.site)}" target="_blank" rel="noopener">서울도서관</a></div>`;
+      <div class="lib-chips">${chips}</div>`;
   }
 
   // 상세 시트 — 전자책 검색·바로 대출
