@@ -909,3 +909,44 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
 .loan-card.is-history { background: rgba(255, 255, 255, .88); }
 .loan-feel { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .loan-card.is-history .loan-actions { align-items: center; }
+
+/* ---------- 서울시 구립도서관 (서울온) ---------- */
+.tabs { flex-wrap: wrap; }
+.tab .tl-full { white-space: nowrap; }
+.lib-hint { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 2px 0 10px; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.lib-card {
+  background: rgba(255, 255, 255, .94); border: 1px solid #efe7f4; border-radius: 16px;
+  padding: 12px 13px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 6px;
+}
+.lib-card.is-ok { border-color: #d9ecdf; background: linear-gradient(180deg, #fbfffc, #fff); }
+.lib-card.is-fav { border-color: #f6c9dd; background: linear-gradient(180deg, #fff7fb, #fff); }
+.lib-card.is-ebook { border-color: #dfe6f7; background: linear-gradient(180deg, #f9fbff, #fff); }
+.lib-card-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: space-between; }
+.lib-card-top b { font-size: 13.5px; color: #4b3f56; letter-spacing: -.2px; }
+.lib-meta { margin: 0; font-size: 11.5px; color: #9c90a6; }
+.lib-note { margin: 0; font-size: 11.5px; color: #7f7488; line-height: 1.45; }
+.lib-badge {
+  font-size: 10.5px; font-weight: 800; padding: 3px 7px; border-radius: 999px;
+  background: #f1edf6; color: #857a90; white-space: nowrap;
+}
+.lib-badge.ok { background: var(--green-soft, #e8f6ee); color: #1f7a51; }
+.lib-badge.check { background: #fdf2e6; color: #a86a29; }
+.lib-badge.ebook { background: #e9eefb; color: #4a63a8; }
+.lib-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.lib-link {
+  display: inline-flex; align-items: center; gap: 3px; text-decoration: none;
+  font-size: 11.5px; font-weight: 800; color: #7b6f84; background: #f6f2f9;
+  border: 1px solid #efe7f4; border-radius: 999px; padding: 6px 10px;
+  transition: background .15s ease, color .15s ease, transform .12s ease;
+}
+.lib-link:active { transform: scale(.96); }
+.lib-link.primary { background: linear-gradient(135deg, #f6a3c0, #e77aa2); border-color: transparent; color: #fff; }
+.lib-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px; }
+.lib-chip {
+  display: inline-flex; align-items: center; text-decoration: none;
+  font-size: 11.5px; font-weight: 700; color: #5f5470; background: #fff;
+  border: 1px solid #e8e0ef; border-radius: 999px; padding: 5px 10px;
+}
+.lib-chip.dim { color: #9c90a6; border-style: dashed; }
+.read-card { cursor: pointer; }
