@@ -774,7 +774,7 @@ textarea::placeholder, .field input::placeholder { color: #b9aec1; }
   background: rgba(246, 116, 158, .18); color: #c94b7c;
   font-size: 10px; font-weight: 800; line-height: 1;
 }
-.tab.is-active .tab-badge { background: rgba(255, 255, 255, .34); color: #fff; }
+.tab.is-active .tab-badge { background: #fff; color: #e2537f; }
 .tab .tl-short { display: none; }
 @media (max-width: 480px) {
   .tab { font-size: 12.5px; padding: 10px 3px; letter-spacing: -.4px; }
