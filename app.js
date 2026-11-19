@@ -431,7 +431,14 @@
   /* ---------------- 취향 유사도 추천 엔진 ---------------- */
   // 제목·작가에서 알아보는 시리즈/주제 (책마다 태그를 일일이 적지 않아도 되도록)
   const TAG_RULES = [
-    [/수상한\s*(도서관|식당|아파트|우리\s*반|친구\s*집|편의점|학원|운동장|고물상|지하실|놀이터|휴게소)/, ['추리', '미스터리', '시리즈', '한국창작동화'], '수상한 시리즈'],
+    [/수상한\s*(도서관|식당|아파트|우리\s*반|친구\s*집|편의점|학원|운동장|고물상|지하실|놀이터|휴게소|기차역|화장실|방학|선생님|비밀)/, ['추리', '미스터리', '시리즈', '한국창작동화'], '수상한 시리즈'],
+    [/스무고개\s*탐정/, ['추리', '미스터리', '시리즈', '한국창작동화'], '스무고개 탐정'],
+    [/간 떨어지는 분식집/, ['판타지', '유머', '시리즈', '한국창작동화'], '간 떨어지는 분식집'],
+    [/내 인생 최악의 일주일/, ['성장', '유머', '영미동화', '시리즈'], '내 인생 최악의 일주일'],
+    [/몬스터\s*캠핑장|오싹한|귀신|요괴|도깨비/, ['판타지', '모험', '동화'], ''],
+    [/긴긴밤|무지개 목욕탕|너는 어떤 씨앗이니/, ['성장', '감동', '한국창작동화'], ''],
+    [/종이접기|만들기|그리기/, ['놀이', '집중력', '예술'], ''],
+    [/그리스 로마 신화|신화/, ['역사', '인물', '판타지', '시리즈'], ''],
     [/푸른 사자 와니니/, ['동물', '성장', '모험', '시리즈', '한국창작동화'], '푸른 사자 와니니'],
     [/구덩이|Holes/i, ['성장', '모험', '영미동화'], ''],
     [/Frank and Joe Hardy|Hardy Boys/i, ['추리', '미스터리', '원서', '챕터북', '시리즈'], 'Hardy Boys'],
@@ -558,8 +565,8 @@
     const why = [];
     if (a.kdc && b.kdc) {
       if (a.kdc === b.kdc) score += 30;
-      else if (a.kdc.slice(0, 2) === b.kdc.slice(0, 2)) score += 18;
-      else if (a.kdc[0] === b.kdc[0]) score += 8;
+      else if (a.kdc.slice(0, 2) === b.kdc.slice(0, 2)) score += 20;
+      else if (a.kdc[0] === b.kdc[0]) score += 12;
     }
     const shared = a.tags.filter((t) => b.tags.includes(t));
     const topic = shared.filter((t) => !GENERIC_TAGS.includes(t));
@@ -571,11 +578,9 @@
     const sameAuthor = !!(ak.length && bk.length && ak.some((x) => bk.includes(x) ||
       (x.length >= 3 && bk.some((y) => y.includes(x) || x.includes(y)))));
     if (sameAuthor) score += 24;
-    if (a.lang === b.lang) score += 4;
-    if (a.type === b.type) score += 4;
-    if (a.field && b.field && a.field === b.field) score += 5;
-    // 같은 분야라는 이유만으로는 비슷한 책이라 부르지 않는다.
-    if (!topic.length && !sameSeries && !sameAuthor) score -= 12;
+    if (a.lang === b.lang) score += 5;
+    if (a.type === b.type) score += 5;
+    if (a.field && b.field && a.field === b.field) score += 10;
     if (topic.length) why.push(topic.slice(0, 2).join('·'));
     if (sameAuthor) why.unshift('같은 작가');
     else if (sameSeries) why.unshift('「' + a.series + '」 시리즈');
@@ -630,7 +635,17 @@
     const loanKeys = new Set(activeLoanItems().map((it) => isbnKey(it.isbn)).filter(Boolean));
 
     const picked = [];
+    const seenCand = new Set();
+    const candidates = [];
     poolBooks().forEach((b) => {
+      const k = isbnKey(b.isbn);
+      if (k && !seenCand.has(k)) { seenCand.add(k); candidates.push({ book: b, fromPool: 1 }); }
+    });
+    state.catalog.forEach((b) => {
+      const k = isbnKey(b.isbn);
+      if (k && !seenCand.has(k)) { seenCand.add(k); candidates.push({ book: b, fromPool: 0 }); }
+    });
+    candidates.forEach(({ book: b, fromPool }) => {
       const k = isbnKey(b.isbn);
       if (!k || doneKeys.has(k) || isDoneTitle(b.title)) return;
       let best = null;
@@ -638,13 +653,14 @@
         const r = simScore(s.book, b);
         if (!best || r.score > best.score) best = { score: r.score, why: r.why, seed: s };
       });
-      if (!best || best.score < 34) return;
+      if (!best || best.score < 22) return;
       picked.push({
-        book: b, score: best.score, why: best.why, seed: best.seed.book,
+        book: b, score: best.score, fromPool, why: best.why, seed: best.seed.book,
         seedLevel: best.seed.level, owned: ownKeys.has(k), loaned: loanKeys.has(k),
       });
     });
-    picked.sort((x, y) => y.score - x.score || (x.owned ? 1 : 0) - (y.owned ? 1 : 0) ||
+    picked.sort((x, y) => y.score - x.score || y.fromPool - x.fromPool ||
+      (x.owned ? 1 : 0) - (y.owned ? 1 : 0) ||
       String(x.book.title).localeCompare(String(y.book.title), 'ko'));
     res.items = picked.slice(0, 8);
     res.basis = {
@@ -662,7 +678,7 @@
         const r = simScore(s.book, b);
         if (!best || r.score > best.score) best = { score: r.score, why: r.why, seed: s };
       });
-      if (best && best.score >= 34) {
+      if (best && best.score >= 22) {
         catPicked.push({ k, best });
       }
     });
@@ -1053,7 +1069,11 @@
   }
 
   async function loadLoanData(force) {
-    if (!force && window.__ACCOUNTS__) { state.accounts = window.__ACCOUNTS__; renderLoans(); return; }
+    if (!force && window.__ACCOUNTS__) {
+      state.accounts = window.__ACCOUNTS__;
+      buildSimilar(); renderGrid(); renderTaste(); renderLoans();
+      return;
+    }
     const snap = assetURL('./data/accounts_status.json', force);
     try {
       state.accounts = await getJSON(state.serverless ? snap : '/api/accounts', NO_STORE);
@@ -1064,6 +1084,9 @@
         if (!state.accounts) state.accounts = null;
       }
     }
+    buildSimilar();
+    renderGrid();
+    renderTaste();
     renderLoans();
   }
 
@@ -1367,14 +1390,19 @@
 
   function tasteItems() {
     const s = state.similar;
-    const out = (s.items || []).map((it) => ({
-      book: it.book, taste: { reason: matchReason(it), owned: it.owned, loaned: it.loaned },
-    }));
+    const seen = new Set();
+    const out = [];
+    (s.items || []).forEach((it) => {
+      const k = isbnKey(it.book && it.book.isbn);
+      if (k) seen.add(k);
+      out.push({ book: it.book, taste: { reason: matchReason(it), owned: it.owned, loaned: it.loaned } });
+    });
     // '내 별점 맞춤'으로 볼 때는 기본 추천 서가의 비슷한 책도 함께 보여 준다.
     if (state.filter.taste) {
       Object.keys(s.catalog || {}).forEach((k) => {
+        if (seen.has(k)) return;
         const b = state.catalog.find((x) => isbnKey(x.isbn) === k);
-        if (b) out.push({ book: b, taste: { reason: matchReason(s.catalog[k]) } });
+        if (b) { seen.add(k); out.push({ book: b, taste: { reason: matchReason(s.catalog[k]) } }); }
       });
     }
     return out;
