@@ -1,6 +1,6 @@
 {
- "updatedAt": "2026-11-18 17:05",
- "source": "광진구립도서관(gwangjinlib.seoul.kr) 로그인 세션에서 확인한 값 (계정 1·2 모두 연동)",
+ "updatedAt": "2026-11-25 11:11",
+ "source": "광진구립도서관(gwangjinlib.seoul.kr) 로그인 세션에서 직접 확인한 값 (계정 1·2 모두 연동)",
  "note": "로그인이 필요한 대출·예약 정보는 확인된 시각(verifiedAt)과 함께 표시합니다. 확인되지 않은 값은 비워 둡니다.",
  "libraries": [
   {
@@ -10,45 +10,16 @@
    "site": "gwangjinlib.seoul.kr",
    "login": "회원 1",
    "connected": true,
-   "verifiedAt": "2026-11-18 13:57",
-   "notice": "대출정지회원 · 2026-11-20까지 대출 불가",
+   "verifiedAt": "2026-11-25 11:09",
+   "notice": "대출정지회원 · 2026-11-25까지 대출 불가(11-26부터 대출 가능)",
    "noticeLevel": "warn",
-   "loans": [
-    {
-     "title": "채사장의 지대넓얕. 2, 자본이라는 신",
-     "library": "중곡도서관",
-     "loanedAt": "2026-11-04",
-     "dueAt": "2026-11-25",
-     "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관",
-     "isbn": "9791197578427",
-     "author": "채사장 · 마케마케 글 · 정용환 그림",
-     "publisher": "돌핀북",
-     "year": "2022",
-     "kdc": "001",
-     "cover": "https://image.aladin.co.kr/product/28568/80/cover500/k852835146_1.jpg"
-    },
-    {
-     "title": "K탐정의 척척척 대한민국. 2, 옹 아저씨, 대통령 선거에 나가다!",
-     "library": "자양제4동도서관",
-     "loanedAt": "2026-10-30",
-     "dueAt": "2026-11-20",
-     "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관",
-     "isbn": "9788901258324",
-     "author": "양화당 글 · 허현경 그림",
-     "publisher": "웅진주니어",
-     "year": "2022",
-     "kdc": "308",
-     "cover": "https://image.aladin.co.kr/product/29096/58/cover500/8901258323_1.jpg"
-    }
-   ],
+   "loans": [],
    "reservations": [
     {
      "title": "인비인",
      "library": "광진정보도서관",
      "reservedAt": "2026-10-28",
-     "queue": "1/1",
+     "queue": "1/2",
      "until": "2026-11-26",
      "isbn": "9791172134297",
      "author": "성해나",
@@ -58,21 +29,10 @@
      "cover": "https://image.aladin.co.kr/product/39581/25/cover500/k692139247_2.jpg"
     }
    ],
-   "interloans": [
-    {
-     "title": "채사장의 지대넓얕. 2, 자본이라는 신",
-     "pickup": "구의역 스마트도서관",
-     "state": "대출중 · 반납예정 2026-11-25"
-    },
-    {
-     "title": "K탐정의 척척척 대한민국. 2, 옹 아저씨, 대통령 선거에 나가다!",
-     "pickup": "구의역 스마트도서관",
-     "state": "대출중 · 반납예정 2026-11-20"
-    }
-   ],
+   "interloans": [],
    "stats": {
-    "누적 대출이용": "155건",
-    "관심도서": "88건",
+    "누적 대출이용": "157건",
+    "관심도서": "91건",
     "누적 상호대차": "206건",
     "최근 수령처": "구의역 스마트도서관"
    }
@@ -84,75 +44,29 @@
    "site": "gwangjinlib.seoul.kr",
    "login": "회원 2",
    "connected": true,
-   "verifiedAt": "2026-11-18 14:04",
-   "notice": "대출정지회원 · 2026-11-21까지 대출 불가",
-   "noticeLevel": "warn",
-   "loans": [
-    {
-     "title": "K탐정의 척척척 대한민국. 5",
-     "library": "중곡도서관",
-     "loanedAt": "2026-11-04",
-     "dueAt": "2026-11-25",
-     "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관",
-     "isbn": "9788901268910",
-     "author": "양화당 글 · 허현경 그림",
-     "publisher": "웅진주니어",
-     "year": "2024",
-     "kdc": "369",
-     "cover": "https://image.aladin.co.kr/product/33302/29/cover500/8901268914_1.jpg"
-    },
-    {
-     "title": "K탐정의 척척척 대한민국. 3, 김반듯의 월급이 사라졌다?",
-     "library": "중곡도서관",
-     "loanedAt": "2026-11-04",
-     "dueAt": "2026-11-25",
-     "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관",
-     "isbn": "9788901268897",
-     "author": "양화당 글 · 허현경 그림",
-     "publisher": "웅진주니어",
-     "year": "2023",
-     "kdc": "375",
-     "cover": "https://image.aladin.co.kr/product/31198/43/cover500/8901268892_1.jpg"
-    },
-    {
-     "title": "K탐정의 척척척 대한민국. 4, 왕눈이 분식, 떡볶이를 수출하다!",
-     "library": "중곡도서관",
-     "loanedAt": "2026-11-04",
-     "dueAt": "2026-11-25",
-     "status": "상호대차 반납연기",
-     "pickup": "구의역 스마트도서관",
-     "isbn": "9788901268903",
-     "author": "양화당 글 · 허현경 그림",
-     "publisher": "웅진주니어",
-     "year": "2023",
-     "kdc": "369",
-     "cover": "https://image.aladin.co.kr/product/31953/82/cover500/8901268906_1.jpg"
-    }
-   ],
+   "verifiedAt": "2026-11-25 11:10",
+   "notice": "대출가능회원",
+   "noticeLevel": "ok",
+   "loans": [],
    "reservations": [],
    "interloans": [
     {
-     "title": "K탐정의 척척척 대한민국. 5",
+     "title": "K탐정의 척척척 대한민국. 6, 오렌지와 양배추가 가족이 되었다고?",
+     "provider": "구의제3동도서관",
      "pickup": "구의역 스마트도서관",
-     "state": "대출중 · 반납예정 2026-11-25"
+     "state": "발송 · 수령 대기"
     },
     {
-     "title": "K탐정의 척척척 대한민국. 3, 김반듯의 월급이 사라졌다?",
+     "title": "K탐정의 척척척 대한민국. 7, 세종 대왕이 우리말 랩을 한다고?",
+     "provider": "구의제3동도서관",
      "pickup": "구의역 스마트도서관",
-     "state": "대출중 · 반납예정 2026-11-25"
-    },
-    {
-     "title": "K탐정의 척척척 대한민국. 4, 왕눈이 분식, 떡볶이를 수출하다!",
-     "pickup": "구의역 스마트도서관",
-     "state": "대출중 · 반납예정 2026-11-25"
+     "state": "발송 · 수령 대기"
     }
    ],
    "stats": {
-    "누적 대출이용": "131건",
+    "누적 대출이용": "134건",
     "관심도서": "13건",
-    "누적 상호대차": "163건",
+    "누적 상호대차": "166건",
     "최근 수령처": "구의역 스마트도서관"
    }
   },
@@ -174,14 +88,94 @@
  ],
  "historyRange": {
   "from": "2026-01-01",
-  "to": "2026-11-18"
+  "to": "2026-11-25"
  },
  "historyCounts": {
-  "gwangjin_1": 34,
-  "gwangjin_2": 44,
-  "total": 78
+  "gwangjin_1": 36,
+  "gwangjin_2": 47,
+  "total": 83
  },
  "loanHistory2026": [
+  {
+   "acct": "gwangjin_1",
+   "title": "채사장의 지대넓얕 . 2 , 자본이라는 신",
+   "author": "채사장 , 마케마케 [공]글 ; 정용환 그림",
+   "publisher": "돌핀북",
+   "year": "2022",
+   "isbn": "9791197578427",
+   "kdc": "001.3",
+   "field": "총류",
+   "cover": "https://search1.kakaocdn.net/thumb/R300x400.q85/?fname=http%3A%2F%2Ft1.daumcdn.net%2Flbook%2Fimage%2F5931686%3Ftimestamp%3D20260306122857",
+   "library": "중곡도서관",
+   "loanedAt": "2026-11-04",
+   "returnedAt": "2026-11-25",
+   "status": "상호대차 반납",
+   "acctLabel": "회원 1"
+  },
+  {
+   "acct": "gwangjin_2",
+   "title": "K탐정의 척척척 대한민국 . 5",
+   "author": "양화당 지음 ; 허현경 그림 ; 이상석 감수",
+   "publisher": "웅진주니어",
+   "year": "2024",
+   "isbn": "9788901268910",
+   "kdc": "369.11",
+   "field": "사회과학",
+   "cover": "https://search1.kakaocdn.net/thumb/R300x400.q85/?fname=http%3A%2F%2Ft1.daumcdn.net%2Flbook%2Fimage%2F7095434%3Ftimestamp%3D20251221133846",
+   "library": "중곡도서관",
+   "loanedAt": "2026-11-04",
+   "returnedAt": "2026-11-25",
+   "status": "상호대차 반납",
+   "acctLabel": "회원 2"
+  },
+  {
+   "acct": "gwangjin_2",
+   "title": "K탐정의 척척척 대한민국 . 4 , 왕눈이 분식, 떡볶이를 수출하다!",
+   "author": "양화당 글 ; 허현경 그림",
+   "publisher": "웅진주니어 : 웅진씽크빅",
+   "year": "2023",
+   "isbn": "9788901268903",
+   "kdc": "369.11",
+   "field": "사회과학",
+   "cover": "https://search1.kakaocdn.net/thumb/R300x400.q85/?fname=http%3A%2F%2Ft1.daumcdn.net%2Flbook%2Fimage%2F6377369%3Ftimestamp%3D20250528145954",
+   "library": "중곡도서관",
+   "loanedAt": "2026-11-04",
+   "returnedAt": "2026-11-25",
+   "status": "상호대차 반납",
+   "acctLabel": "회원 2"
+  },
+  {
+   "acct": "gwangjin_2",
+   "title": "K탐정의 척척척 대한민국 . 3 , 김반듯의 월급이 사라졌다?",
+   "author": "양화당 지음 ; 허현경 그림",
+   "publisher": "웅진주니어",
+   "year": "2023",
+   "isbn": "9788901268897",
+   "kdc": "369.11",
+   "field": "사회과학",
+   "cover": "https://search1.kakaocdn.net/thumb/R300x400.q85/?fname=http%3A%2F%2Ft1.daumcdn.net%2Flbook%2Fimage%2F6296761%3Ftimestamp%3D20251111153430",
+   "library": "중곡도서관",
+   "loanedAt": "2026-11-04",
+   "returnedAt": "2026-11-25",
+   "status": "상호대차 반납",
+   "acctLabel": "회원 2"
+  },
+  {
+   "acct": "gwangjin_1",
+   "title": "K탐정의 척척척 대한민국 . 2, 옹 아저씨, 대통령 선거에 나가다!",
+   "author": "양화당 지음 ; 허현경 그림",
+   "publisher": "웅진주니어: 웅진씽크빅",
+   "year": "2022",
+   "isbn": "9788901258324",
+   "kdc": "369.11",
+   "field": "사회과학",
+   "cover": "https://search1.kakaocdn.net/thumb/R300x400.q85/?fname=http%3A%2F%2Ft1.daumcdn.net%2Flbook%2Fimage%2F6039108%3Ftimestamp%3D20251111151543",
+   "library": "자양제4동도서관",
+   "loanedAt": "2026-10-30",
+   "returnedAt": "2026-11-23",
+   "status": "상호대차 반납",
+   "acctLabel": "회원 1"
+  },
   {
    "acct": "gwangjin_1",
    "title": "(반달이 뜨면 열리는) 몬스터 캠핑장",
@@ -1431,5 +1425,5 @@
    "acctLabel": "회원 2"
   }
  ],
- "historyNote": "2026-01-01~2026-11-18 대출일 기준 반납완료 이력. 대출일 최신순."
+ "historyNote": "2026-01-01~2026-11-25 대출일 기준 반납완료 이력. 대출일 최신순."
 }
